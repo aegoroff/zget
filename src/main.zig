@@ -63,9 +63,9 @@ pub fn main() !void {
     );
     defer file.close();
 
+    var buf = try allocator.alloc(u8, 4096);
+    defer allocator.free(buf);
     while (true) {
-        var buf = try allocator.alloc(u8, 4096);
-        defer allocator.free(buf);
         const read = try req.reader().read(buf);
         if (read == 0) {
             break;
