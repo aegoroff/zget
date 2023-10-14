@@ -32,7 +32,7 @@ pub fn main() !void {
     try req.start();
     try req.wait();
     const content_type = req.response.headers.getFirstValue("Content-Type") orelse "text/plain";
-    const content_size = req.response.headers.getFirstValue("Content-Length") orelse "0";
+    const content_size = req.response.headers.getFirstValue("Content-Length") orelse "N/A";
     try stdout.print("Content-type: {s}\n", .{content_type});
     try stdout.print("Content-size: {s}\n", .{content_size});
     try bw.flush();
