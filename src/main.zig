@@ -10,8 +10,9 @@ pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
 
     const params = comptime clap.parseParamsComptime(
-        \\-h, --help       Display this help and exit.
-        \\-u, --uri <str>  Uri to download.
+        \\-h, --help             Display this help and exit.
+        \\-u, --uri <str>        Uri to download.
+        \\-H, --header <str>...  Additional HTTP header(s).
         \\
     );
     var diag = clap.Diagnostic{};
@@ -42,6 +43,16 @@ pub fn main() !void {
     var headers = std.http.Headers{ .allocator = allocator };
     defer headers.deinit();
     try headers.append("accept", "*/*");
+    for (res.args.header) |s| {
+        var pair = std.mem.splitScalar(u8, s, ':');
+        const h = pair.next() orelse {
+            continue;
+        };
+        const v = pair.next() orelse {
+            continue;
+        };
+        try headers.append(h, v);
+    }
 
     var req = try http_client.request(.GET, uri, headers, .{});
     defer req.deinit();
