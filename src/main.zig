@@ -77,8 +77,18 @@ pub fn main() !void {
 
     var buf = try allocator.alloc(u8, 16 * 4096);
     defer allocator.free(buf);
+    const max_errors = 10;
+    var errors: i16 = 0;
     while (true) {
-        const read = try req.reader().read(buf);
+        const read = req.reader().read(buf) catch |err| {
+            try stdout.print("Error: {}\n", .{err});
+            if (errors < max_errors) {
+                errors += 1;
+                continue;
+            } else {
+                break;
+            }
+        };
         if (read == 0) {
             break;
         }
