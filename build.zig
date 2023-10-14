@@ -24,6 +24,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     exe.linkLibC();
+    exe.addAnonymousModule("clap", .{ .source_file = .{ .path = "libs/zig-clap/clap.zig" } });
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default

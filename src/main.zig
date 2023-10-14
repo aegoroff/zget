@@ -1,23 +1,40 @@
 const std = @import("std");
 const assert = std.debug.assert;
 const maxInt = std.math.maxInt;
+const clap = @import("clap");
 
 pub fn main() !void {
     // stdout is for the actual output of your application, for example if you
     // are implementing gzip, then only the compressed bytes should be sent to
     // stdout, not any debugging messages.
-    const stdout_file = std.io.getStdOut().writer();
-    var bw = std.io.bufferedWriter(stdout_file);
-    const stdout = bw.writer();
+    const stdout = std.io.getStdOut().writer();
+
+    const params = comptime clap.parseParamsComptime(
+        \\-h, --help       Display this help and exit.
+        \\-u, --uri <str>  Uri to download.
+        \\
+    );
+    var diag = clap.Diagnostic{};
+    var res = clap.parse(clap.Help, &params, clap.parsers.default, .{
+        .diagnostic = &diag,
+    }) catch |err| {
+        // Report useful error and exit
+        diag.report(stdout, err) catch {};
+        return err;
+    };
+    defer res.deinit();
+
+    if (res.args.help != 0) {
+        return clap.help(stdout, clap.Help, &params, .{});
+    }
+
     const allocator = std.heap.c_allocator;
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
 
-    const stdin_file = std.io.getStdIn().reader();
-    try stdin_file.streamUntilDelimiter(buffer.writer(), '\n', null);
-
-    try stdout.print("URI: {s}\n", .{buffer.items});
-    const uri = try std.Uri.parse(buffer.items);
+    const source = res.args.uri orelse {
+        return clap.help(stdout, clap.Help, &params, .{});
+    };
+    try stdout.print("URI: {s}\n", .{source});
+    const uri = try std.Uri.parse(source);
 
     var http_client = std.http.Client{
         .allocator = allocator,
@@ -35,7 +52,6 @@ pub fn main() !void {
     const content_size = req.response.headers.getFirstValue("Content-Length") orelse "N/A";
     try stdout.print("Content-type: {s}\n", .{content_type});
     try stdout.print("Content-size: {s}\n", .{content_size});
-    try bw.flush();
 
     var file_path = std.fs.path.basename(uri.path);
     if (file_path.len == 0) {
@@ -56,8 +72,6 @@ pub fn main() !void {
         }
         try file.writeAll(buf[0..read]);
     }
-
-    try bw.flush(); // don't forget to flush!
 }
 
 pub fn parseUsize(buf: []const u8, radix: u8) !usize {
