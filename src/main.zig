@@ -42,7 +42,6 @@ pub fn main() !void {
     };
     var headers = std.http.Headers{ .allocator = allocator };
     defer headers.deinit();
-    try headers.append("accept", "*/*");
     for (res.args.header) |s| {
         var pair = std.mem.splitScalar(u8, s, ':');
         const h = pair.next() orelse {
@@ -51,7 +50,9 @@ pub fn main() !void {
         const v = pair.next() orelse {
             continue;
         };
-        try headers.append(h, v);
+        const hs = std.mem.trim(u8, h, " ");
+        const vs = std.mem.trim(u8, v, " ");
+        try headers.append(hs, vs);
     }
 
     var req = try http_client.request(.GET, uri, headers, .{});
