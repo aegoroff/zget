@@ -1,6 +1,4 @@
 const std = @import("std");
-const assert = std.debug.assert;
-const maxInt = std.math.maxInt;
 const clap = @import("clap");
 
 pub fn main() !void {
