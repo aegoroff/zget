@@ -59,9 +59,13 @@ pub fn main() !void {
     try req.start();
     try req.wait();
     const content_type = req.response.headers.getFirstValue("Content-Type") orelse "text/plain";
-    const content_size = req.response.headers.getFirstValue("Content-Length") orelse "N/A";
     try stdout.print("Content-type: {s}\n", .{content_type});
-    try stdout.print("Content-size: {s}\n", .{content_size});
+
+    const content_size = req.response.headers.getFirstValue("Content-Length") orelse "N/A";
+    const content_size_bytes = parseUsize(content_size, 10) catch 0;
+    if (content_size_bytes > 0) {
+        try stdout.print("Content-size: {} ({d} bytes)\n", .{std.fmt.fmtIntSizeBin(content_size_bytes), content_size_bytes});
+    }
 
     var file_path = std.fs.path.basename(uri.path);
     if (file_path.len == 0) {
