@@ -83,7 +83,8 @@ pub fn main() !void {
     var errors: i16 = 0;
     var read_bytes: usize = 0;
     var progress = std.Progress{};
-    var node = progress.start("Downloading", content_size_bytes);
+    var node = progress.start("Downloading", 100);
+    node.setUnit(" %");
     while (true) {
         const read = req.reader().read(buf) catch |err| {
             try stdout.print("Error: {}\n", .{err});
@@ -95,7 +96,7 @@ pub fn main() !void {
             }
         };
         read_bytes += read;
-        node.setCompletedItems(read_bytes);
+        node.setCompletedItems(percent(usize, read_bytes, content_size_bytes));
         progress.maybeRefresh();
         if (read == 0) {
             break;
@@ -103,6 +104,15 @@ pub fn main() !void {
         try file.writeAll(buf[0..read]);
     }
     node.end();
+}
+
+fn percent(comptime T: type, completed: T, total: T) T {
+    const x = @as(f32, @floatFromInt(completed));
+    const y = @as(f32, @floatFromInt(total));
+    if (y == 0) {
+        return 0;
+    }
+    return @intFromFloat((x / y) * 100);
 }
 
 fn trim(s: ?[]const u8) ?[]const u8 {
@@ -124,4 +134,29 @@ test "trim null" {
 test "trim null with whitespaces" {
     const i: ?[]const u8 = " 1234 ";
     try std.testing.expectEqualStrings("1234", trim(i) orelse "");
+}
+
+test "percent 0" {
+    const expected: usize = 0;
+    try std.testing.expectEqual(expected, percent(usize, 10, 0));
+}
+
+test "percent 1" {
+    const expected: usize = 1;
+    try std.testing.expectEqual(expected, percent(usize, 10, 1000));
+}
+
+test "percent 10" {
+    const expected: usize = 10;
+    try std.testing.expectEqual(expected, percent(usize, 100, 1000));
+}
+
+test "percent 25" {
+    const expected: usize = 25;
+    try std.testing.expectEqual(expected, percent(usize, 250, 1000));
+}
+
+test "percent 70" {
+    const expected: usize = 70;
+    try std.testing.expectEqual(expected, percent(usize, 700, 1000));
 }
