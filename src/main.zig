@@ -51,7 +51,7 @@ pub fn main() !void {
         try headers.append(h, v);
     }
 
-    var req = try http_client.request(.GET, uri, headers, .{});
+    var req = try http_client.request(.GET, uri, headers, .{ .max_redirects = 16 });
     defer req.deinit();
 
     try req.start();
