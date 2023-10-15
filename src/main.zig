@@ -10,6 +10,7 @@ pub fn main() !void {
     const params = comptime clap.parseParamsComptime(
         \\-h, --help             Display this help and exit.
         \\-u, --uri <str>        Uri to download.
+        \\-o, --out <str>        Path the result will saved to.
         \\-H, --header <str>...  Additional HTTP header(s).
         \\
     );
@@ -30,6 +31,9 @@ pub fn main() !void {
     const allocator = std.heap.c_allocator;
 
     const source = res.args.uri orelse {
+        return clap.help(stdout, clap.Help, &params, .{});
+    };
+    const target = res.args.out orelse {
         return clap.help(stdout, clap.Help, &params, .{});
     };
     try stdout.print("URI: {s}\n", .{source});
@@ -69,10 +73,8 @@ pub fn main() !void {
     if (file_path.len == 0) {
         file_path = "hello.html";
     }
-    const file = try std.fs.cwd().createFile(
-        file_path,
-        .{ .read = false },
-    );
+
+    var file = try std.fs.createFileAbsolute(target, .{ .read = false });
     defer file.close();
 
     var buf = try allocator.alloc(u8, 16 * 4096);
