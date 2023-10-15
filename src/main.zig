@@ -101,6 +101,43 @@ fn trim(s: ?[]const u8) ?[]const u8 {
     return std.mem.trim(u8, slice, " ");
 }
 
+pub fn parseUsize(buf: []const u8, radix: u8) !usize {
+    var x: u64 = 0;
+
+    for (buf) |c| {
+        const digit = charToDigit(c);
+
+        if (digit >= radix) {
+            return error.InvalidChar;
+        }
+
+        // x *= radix
+        var ov = @mulWithOverflow(x, radix);
+        if (ov[1] != 0) return error.OverFlow;
+
+        // x += digit
+        ov = @addWithOverflow(ov[0], digit);
+        if (ov[1] != 0) return error.OverFlow;
+        x = ov[0];
+    }
+
+    return x;
+}
+
+fn charToDigit(c: u8) u8 {
+    return switch (c) {
+        '0'...'9' => c - '0',
+        'A'...'Z' => c - 'A' + 10,
+        'a'...'z' => c - 'a' + 10,
+        else => maxInt(u8),
+    };
+}
+
+test "parse usize" {
+    const result = try parseUsize("1234", 10);
+    try std.testing.expect(result == 1234);
+}
+
 test "trim not needed" {
     const i: ?[]const u8 = "1234";
     try std.testing.expectEqualStrings("1234", trim(i) orelse "");
