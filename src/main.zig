@@ -81,6 +81,9 @@ pub fn main() !void {
     defer allocator.free(buf);
     const max_errors = 10;
     var errors: i16 = 0;
+    var read_bytes: usize = 0;
+    var progress = std.Progress{};
+    var node = progress.start("Downloading", content_size_bytes);
     while (true) {
         const read = req.reader().read(buf) catch |err| {
             try stdout.print("Error: {}\n", .{err});
@@ -91,11 +94,15 @@ pub fn main() !void {
                 break;
             }
         };
+        read_bytes += read;
+        node.setCompletedItems(read_bytes);
+        progress.maybeRefresh();
         if (read == 0) {
             break;
         }
         try file.writeAll(buf[0..read]);
     }
+    node.end();
 }
 
 fn trim(s: ?[]const u8) ?[]const u8 {
