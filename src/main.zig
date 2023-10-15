@@ -83,9 +83,9 @@ pub fn main() !void {
     var errors: i16 = 0;
     var read_bytes: usize = 0;
     var progress = std.Progress{};
-    var node = progress.start("Downloading", 100);
-    node.setUnit(" %");
-    var bytes_progress = node.start("Read", content_size_bytes);
+    var percent_progress = progress.start("Downloading", 100);
+    percent_progress.setUnit(" %");
+    var bytes_progress = percent_progress.start("Read", content_size_bytes);
     bytes_progress.setUnit(" bytes");
     while (true) {
         const read = req.reader().read(buf) catch |err| {
@@ -98,7 +98,7 @@ pub fn main() !void {
             }
         };
         read_bytes += read;
-        node.setCompletedItems(percent(usize, read_bytes, content_size_bytes));
+        percent_progress.setCompletedItems(percent(usize, read_bytes, content_size_bytes));
         bytes_progress.setCompletedItems(read_bytes);
         progress.maybeRefresh();
         if (read == 0) {
@@ -106,7 +106,7 @@ pub fn main() !void {
         }
         try file.writeAll(buf[0..read]);
     }
-    node.end();
+    percent_progress.end();
     bytes_progress.end();
 }
 
