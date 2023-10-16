@@ -9,10 +9,9 @@ pub fn main() !void {
 
     const params = comptime clap.parseParamsComptime(
         \\-h, --help             Display this help and exit.
-        \\-u, --uri <str>        Uri to download.
-        \\-o, --out <str>        Path the result will saved to.
+        \\-O, --output <str>     Path the result will saved to.
         \\-H, --header <str>...  Additional HTTP header(s).
-        \\
+        \\ <str>                 Uri to download.
     );
     var diag = clap.Diagnostic{};
     var res = clap.parse(clap.Help, &params, clap.parsers.default, .{
@@ -30,10 +29,11 @@ pub fn main() !void {
 
     const allocator = std.heap.c_allocator;
 
-    const source = res.args.uri orelse {
+    const source = if (res.positionals.len == 1) res.positionals[0] else {
         return clap.help(stdout, clap.Help, &params, .{});
     };
-    const target = res.args.out orelse {
+
+    const target = res.args.output orelse {
         return clap.help(stdout, clap.Help, &params, .{});
     };
     try stdout.print("URI: {s}\n", .{source});
