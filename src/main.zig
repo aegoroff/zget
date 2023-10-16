@@ -69,11 +69,6 @@ pub fn main() !void {
         try stdout.print("Content-size: {:.2} ({d} bytes)\n", .{ std.fmt.fmtIntSizeBin(content_size_bytes), content_size_bytes });
     }
 
-    var file_path = std.fs.path.basename(uri.path);
-    if (file_path.len == 0) {
-        file_path = "hello.html";
-    }
-
     var file = try std.fs.createFileAbsolute(target, .{ .read = false });
     defer file.close();
 
