@@ -25,6 +25,8 @@ pub fn main() !void {
     }
 
     const allocator = std.heap.c_allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
 
     const source = if (res.positionals.len == 1) res.positionals[0] else {
         return clap.help(stdout, clap.Help, &params, .{});
@@ -41,16 +43,14 @@ pub fn main() !void {
     if (optional_d != null) {
         optional_d.?.close();
         const file_name = std.fs.path.basename(uri.path);
-        // Memory allocated will be freed when programm ends
-        target = try std.fs.path.join(allocator, &[_][]const u8{ target, file_name });
+        target = try std.fs.path.join(arena.allocator(), &[_][]const u8{ target, file_name });
     }
     // Calculate target file path completed
 
     var http_client = std.http.Client{
-        .allocator = allocator,
+        .allocator = arena.allocator(),
     };
-    var headers = std.http.Headers{ .allocator = allocator };
-    defer headers.deinit();
+    var headers = std.http.Headers{ .allocator = arena.allocator() };
     for (res.args.header) |s| {
         var pair = std.mem.splitScalar(u8, s, ':');
         const h = trim(pair.next()) orelse {
@@ -79,8 +79,7 @@ pub fn main() !void {
     var file = try std.fs.createFileAbsolute(target, .{ .read = false });
     defer file.close();
 
-    var buf = try allocator.alloc(u8, 16 * 4096);
-    defer allocator.free(buf);
+    var buf = try arena.allocator().alloc(u8, 16 * 4096);
     const max_errors = 10;
     var errors: i16 = 0;
     var read_bytes: usize = 0;
