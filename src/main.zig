@@ -44,6 +44,8 @@ pub fn main() !void {
         // Memory allocated will be freed when programm ends
         target = try std.fs.path.join(allocator, &[_][]const u8{ target, file_name });
     }
+    // Calculate target file path completed
+
     var http_client = std.http.Client{
         .allocator = allocator,
     };
