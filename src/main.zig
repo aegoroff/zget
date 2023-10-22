@@ -6,7 +6,7 @@ pub fn main() !void {
 
     const params = comptime clap.parseParamsComptime(
         \\-h, --help             Display this help and exit.
-        \\-O, --output <str>     Path the result will saved to.
+        \\-O, --output <str>     Path the result will saved to. If it's a directory file name will be get from URI file name part.
         \\-H, --header <str>...  Additional HTTP header(s).
         \\ <str>                 Uri to download.
     );
