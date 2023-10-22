@@ -30,12 +30,20 @@ pub fn main() !void {
         return clap.help(stdout, clap.Help, &params, .{});
     };
 
-    const target = res.args.output orelse {
-        return clap.help(stdout, clap.Help, &params, .{});
-    };
     try stdout.print("URI: {s}\n", .{source});
     const uri = try std.Uri.parse(source);
 
+    // Calculate target file path
+    var target = res.args.output orelse {
+        return clap.help(stdout, clap.Help, &params, .{});
+    };
+    var optional_d = std.fs.openDirAbsolute(target, .{}) catch null;
+    if (optional_d != null) {
+        optional_d.?.close();
+        const file_name = std.fs.path.basename(uri.path);
+        // Memory allocated will be freed when programm ends
+        target = try std.fs.path.join(allocator, &[_][]const u8{ target, file_name });
+    }
     var http_client = std.http.Client{
         .allocator = allocator,
     };
@@ -76,8 +84,10 @@ pub fn main() !void {
     var read_bytes: usize = 0;
     var progress = std.Progress{};
     var percent_progress = progress.start("Downloading", 100);
+    defer percent_progress.end();
     percent_progress.setUnit(" %");
     var bytes_progress = percent_progress.start("Read", content_size_bytes);
+    defer bytes_progress.end();
     bytes_progress.setUnit(" bytes");
     while (true) {
         const read = req.reader().read(buf) catch |err| {
@@ -98,8 +108,6 @@ pub fn main() !void {
         }
         try file.writeAll(buf[0..read]);
     }
-    percent_progress.end();
-    bytes_progress.end();
 }
 
 fn percent(comptime T: type, completed: T, total: T) T {
