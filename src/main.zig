@@ -35,15 +35,16 @@ pub fn main() !void {
     try stdout.print("URI: {s}\n", .{source});
     const uri = try std.Uri.parse(source);
 
+    const file_name = std.fs.path.basename(uri.path);
     // Calculate target file path
-    var target = res.args.output orelse {
-        return clap.help(stdout, clap.Help, &params, .{});
-    };
+    var target = res.args.output orelse file_name;
     var optional_d = std.fs.openDirAbsolute(target, .{}) catch null;
     if (optional_d != null) {
         optional_d.?.close();
-        const file_name = std.fs.path.basename(uri.path);
         target = try std.fs.path.join(arena.allocator(), &[_][]const u8{ target, file_name });
+    }
+    if (target.len == 0) {
+        return ZgetError.ResultFileNotSet;
     }
     // Calculate target file path completed
 
@@ -76,7 +77,8 @@ pub fn main() !void {
         try stdout.print("Content-size: {:.2} ({d} bytes)\n", .{ std.fmt.fmtIntSizeBin(content_size_bytes), content_size_bytes });
     }
 
-    var file = try std.fs.createFileAbsolute(target, .{ .read = false });
+    const file_options = .{ .read = false };
+    var file = if (std.mem.eql(u8, target, file_name)) try std.fs.cwd().createFile(file_name, file_options) else try std.fs.createFileAbsolute(target, file_options);
     defer file.close();
 
     var buf = try arena.allocator().alloc(u8, 16 * 4096);
@@ -110,6 +112,8 @@ pub fn main() !void {
         try file.writeAll(buf[0..read]);
     }
 }
+
+const ZgetError = error{ResultFileNotSet};
 
 fn percent(comptime T: type, completed: T, total: T) T {
     const x = @as(f32, @floatFromInt(completed));
