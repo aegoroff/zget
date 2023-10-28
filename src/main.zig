@@ -44,6 +44,8 @@ pub fn main() !void {
         target = try std.fs.path.join(arena.allocator(), &[_][]const u8{ target, file_name });
     }
     if (target.len == 0) {
+        // if no file name from URI and nothing set using cli option
+        // treat this as error
         return ZgetError.ResultFileNotSet;
     }
     // Calculate target file path completed
