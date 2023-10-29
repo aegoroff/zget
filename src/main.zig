@@ -94,6 +94,10 @@ pub fn main() !void {
     var bytes_progress = percent_progress.start("Read", content_size_bytes);
     defer bytes_progress.end();
     bytes_progress.setUnit(" bytes");
+    var speed_progress = bytes_progress.start("Speed", 0);
+    defer speed_progress.end();
+    speed_progress.setUnit(" KiB/sec");
+    var timer = try std.time.Timer.start();
     while (true) {
         const read = req.reader().read(buf) catch |err| {
             try stdout.print("Error: {}\n", .{err});
@@ -105,6 +109,12 @@ pub fn main() !void {
             }
         };
         read_bytes += read;
+        const elapsed = timer.read() / 1000000000;
+        if (elapsed > 0) {
+            const speed = (read_bytes / 1024) / elapsed;
+            speed_progress.setCompletedItems(speed);
+        }
+
         percent_progress.setCompletedItems(percent(usize, read_bytes, content_size_bytes));
         bytes_progress.setCompletedItems(read_bytes);
         progress.maybeRefresh();
