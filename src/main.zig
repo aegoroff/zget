@@ -111,7 +111,13 @@ pub fn main() !void {
         read_bytes += read;
         const elapsed = timer.read() / 1000000000;
         if (elapsed > 0) {
-            const speed = (read_bytes / 1024) / elapsed;
+            const kbytes = read_bytes / 1024;
+            var value = kbytes;
+            if (kbytes > 1024) {
+                value = kbytes / 1024;
+                speed_progress.setUnit(" MiB/sec");
+            }
+            const speed = value / elapsed;
             speed_progress.setCompletedItems(speed);
         }
 
