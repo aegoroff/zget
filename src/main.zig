@@ -86,18 +86,9 @@ pub fn main() !void {
     var buf = try arena.allocator().alloc(u8, 16 * 4096);
     const max_errors = 10;
     var errors: i16 = 0;
-    var read_bytes: usize = 0;
-    var progress = std.Progress{};
-    var percent_progress = progress.start("Downloading", 100);
-    defer percent_progress.end();
-    percent_progress.setUnit(" %");
-    var bytes_progress = percent_progress.start("Read", content_size_bytes);
-    defer bytes_progress.end();
-    bytes_progress.setUnit(" bytes");
-    var speed_progress = bytes_progress.start("Speed", 0);
-    defer speed_progress.end();
-    speed_progress.setUnit(" KiB/sec");
-    var timer = try std.time.Timer.start();
+
+    var progresser = try Progresser.init(content_size_bytes);
+    defer progresser.end();
     while (true) {
         const read = req.reader().read(buf) catch |err| {
             try stdout.print("Error: {}\n", .{err});
@@ -108,16 +99,7 @@ pub fn main() !void {
                 break;
             }
         };
-        read_bytes += read;
-        const elapsed = timer.read() / 1000000000;
-        if (elapsed > 0) {
-            const speed = (read_bytes / 1024) / elapsed;
-            speed_progress.setCompletedItems(speed);
-        }
-
-        percent_progress.setCompletedItems(percent(usize, read_bytes, content_size_bytes));
-        bytes_progress.setCompletedItems(read_bytes);
-        progress.maybeRefresh();
+        progresser.bump(read);
         if (read == 0) {
             break;
         }
@@ -126,6 +108,56 @@ pub fn main() !void {
 }
 
 const ZgetError = error{ResultFileNotSet};
+
+const Progresser = struct {
+    percent_progress: *std.Progress.Node,
+    bytes_progress: std.Progress.Node,
+    speed_progress: std.Progress.Node,
+    timer: std.time.Timer,
+    progress: std.Progress,
+    completed_bytes: usize,
+    total_bytes: usize,
+
+    fn init(total_bytes: usize) !Progresser {
+        var progress = std.Progress{};
+        var percent_progress = progress.start("Downloading", 100);
+        var bytes_progress = percent_progress.start("Read", total_bytes);
+        var speed_progress = bytes_progress.start("Speed", 0);
+        var result = Progresser{
+            .total_bytes = total_bytes,
+            .completed_bytes = 0,
+            .progress = progress,
+            .percent_progress = percent_progress,
+            .bytes_progress = bytes_progress,
+            .speed_progress = speed_progress,
+            .timer = try std.time.Timer.start(),
+        };
+
+        result.percent_progress.setUnit(" %");
+        result.bytes_progress.setUnit(" bytes");
+        result.speed_progress.setUnit(" KiB/sec");
+        return result;
+    }
+
+    fn bump(self: *Progresser, portion: usize) void {
+        self.completed_bytes += portion;
+        const elapsed = self.timer.read() / 1000000000;
+        if (elapsed > 0) {
+            const speed = (self.completed_bytes / 1024) / elapsed;
+            self.speed_progress.setCompletedItems(speed);
+        }
+
+        self.percent_progress.setCompletedItems(percent(usize, self.completed_bytes, self.total_bytes));
+        self.bytes_progress.setCompletedItems(self.completed_bytes);
+        self.progress.maybeRefresh();
+    }
+
+    fn end(self: *Progresser) void {
+        self.bytes_progress.end();
+        self.speed_progress.end();
+        self.percent_progress.end();
+    }
+};
 
 fn percent(comptime T: type, completed: T, total: T) T {
     const x = @as(f32, @floatFromInt(completed));
