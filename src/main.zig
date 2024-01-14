@@ -187,3 +187,8 @@ test "percent 70" {
     const expected: usize = 70;
     try std.testing.expectEqual(expected, percent(usize, 700, 1000));
 }
+
+test "percent 70 (int)" {
+    const expected: i32 = 70;
+    try std.testing.expectEqual(expected, percent(i32, 700, 1000));
+}
