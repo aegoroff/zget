@@ -10,9 +10,15 @@ pub fn main() !void {
         \\-H, --header <str>...  Additional HTTP header(s).
         \\ <str>                 Uri to download.
     );
+
+    const allocator = std.heap.c_allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
     var diag = clap.Diagnostic{};
     var res = clap.parse(clap.Help, &params, clap.parsers.default, .{
         .diagnostic = &diag,
+        .allocator = arena.allocator(),
     }) catch |err| {
         // Report useful error and exit
         diag.report(stdout, err) catch {};
@@ -24,10 +30,6 @@ pub fn main() !void {
         return clap.help(stdout, clap.Help, &params, .{});
     }
 
-    const allocator = std.heap.c_allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
     const source = if (res.positionals.len == 1) res.positionals[0] else {
         return clap.help(stdout, clap.Help, &params, .{});
     };
@@ -35,7 +37,7 @@ pub fn main() !void {
     try stdout.print("URI: {s}\n", .{source});
     const uri = try std.Uri.parse(source);
 
-    const file_name = std.fs.path.basename(uri.path);
+    const file_name = std.fs.path.basename(uri.path.raw);
     // Calculate target file path
     var target = res.args.output orelse file_name;
     var optional_d = std.fs.openDirAbsolute(target, .{}) catch null;
@@ -53,7 +55,7 @@ pub fn main() !void {
     var http_client = std.http.Client{
         .allocator = arena.allocator(),
     };
-    var headers = std.http.Headers{ .allocator = arena.allocator() };
+    var headers = std.http.Client.Request.Headers{};
     for (res.args.header) |s| {
         var pair = std.mem.splitScalar(u8, s, ':');
         const h = trim(pair.next()) orelse {
@@ -65,7 +67,8 @@ pub fn main() !void {
         try headers.append(h, v);
     }
 
-    var req = try http_client.request(.GET, uri, headers, .{ .max_redirects = 16 });
+    //http_client.open(method: http.Method, uri: Uri, options: RequestOptions)
+    var req = try http_client.open(.GET, uri, .{ .headers = headers });
     defer req.deinit();
 
     try req.start();

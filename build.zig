@@ -15,26 +15,32 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    const arch: std.Target.Cpu.Arch = target.result.cpu.arch;
+    //const arch: std.Target.Cpu.Arch = target.result.cpu.arch;
 
     const exe = b.addExecutable(.{
         .name = "zget",
         // In this case the main source file is merely a path, however, in more
         // complicated build scripts, this could be a generated file.
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
     exe.linkLibC();
-    exe.addAnonymousModule("clap", .{ .source_file = .{ .path = "libs/zig-clap/clap.zig" } });
-    if (arch.isX86()) {
-        exe.target.cpu_model = .{ .explicit = &std.Target.x86.cpu.haswell };
-        exe.disable_stack_probing = true;
-    } else if (arch.isAARCH64() and target.isDarwin()) {
-        exe.target.cpu_model = .{ .explicit = &std.Target.aarch64.cpu.apple_m1 };
-    } else if (arch.isAARCH64() and target.isLinux()) {
-        exe.target.cpu_model = .{ .explicit = &std.Target.aarch64.cpu.generic };
-    }
+
+    const clap_dep = b.dependency("clap", .{
+        .optimize = optimize,
+        .target = target,
+    });
+    exe.root_module.addImport("clap", clap_dep.module("clap"));
+
+    // if (arch.isX86()) {
+    //     //exe.target.cpu_model = .{ .explicit = &std.Target.x86.cpu.haswell };
+    //     exe.disable_stack_probing = true;
+    // } else if (arch.isAARCH64() and target.isDarwin()) {
+    //     exe.target.cpu_model = .{ .explicit = &std.Target.aarch64.cpu.apple_m1 };
+    // } else if (arch.isAARCH64() and target.isLinux()) {
+    //     exe.target.cpu_model = .{ .explicit = &std.Target.aarch64.cpu.generic };
+    // }
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
@@ -67,7 +73,7 @@ pub fn build(b: *std.Build) void {
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
     const unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
