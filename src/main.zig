@@ -55,8 +55,8 @@ pub fn main() !void {
     var http_client = std.http.Client{
         .allocator = arena.allocator(),
     };
-    var headers = std.http.Client.Request.Headers{};
-    for (res.args.header) |s| {
+    var headers: []std.http.Header = undefined;
+    for (res.args.header, 0..) |s, i| {
         var pair = std.mem.splitScalar(u8, s, ':');
         const h = trim(pair.next()) orelse {
             continue;
@@ -64,20 +64,20 @@ pub fn main() !void {
         const v = trim(pair.next()) orelse {
             continue;
         };
-        try headers.append(h, v);
+        headers[i] = .{ .name = h, .value = v };
     }
 
     //http_client.open(method: http.Method, uri: Uri, options: RequestOptions)
-    var req = try http_client.open(.GET, uri, .{ .headers = headers });
+    var header_buffer: [4096]u8 = undefined;
+    var req = try http_client.open(.GET, uri, .{ .server_header_buffer = &header_buffer, .extra_headers = headers });
     defer req.deinit();
 
-    try req.start();
+    try req.send();
     try req.wait();
-    const content_type = req.response.headers.getFirstValue("Content-Type") orelse "text/plain";
+    const content_type = req.response.content_type orelse "text/plain";
     try stdout.print("Content-type: {s}\n", .{content_type});
 
-    const content_size = req.response.headers.getFirstValue("Content-Length") orelse "N/A";
-    const content_size_bytes = std.fmt.parseInt(usize, content_size, 10) catch 0;
+    const content_size_bytes = req.response.content_length orelse 0;
     if (content_size_bytes > 0) {
         try stdout.print("Content-size: {:.2} ({d} bytes)\n", .{ std.fmt.fmtIntSizeBin(content_size_bytes), content_size_bytes });
     }
