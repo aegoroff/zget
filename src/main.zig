@@ -37,7 +37,7 @@ pub fn main() !void {
     try stdout.print("URI: {s}\n", .{source});
     const uri = try std.Uri.parse(source);
 
-    const file_name = std.fs.path.basename(uri.path.raw);
+    const file_name = std.fs.path.basename(uri.path.percent_encoded);
     // Calculate target file path
     var target = res.args.output orelse file_name;
     var optional_d = std.fs.openDirAbsolute(target, .{}) catch null;
@@ -55,8 +55,8 @@ pub fn main() !void {
     var http_client = std.http.Client{
         .allocator = arena.allocator(),
     };
-    var headers: []std.http.Header = undefined;
-    for (res.args.header, 0..) |s, i| {
+    var list = std.ArrayList(std.http.Header).init(arena.allocator());
+    for (res.args.header) |s| {
         var pair = std.mem.splitScalar(u8, s, ':');
         const h = trim(pair.next()) orelse {
             continue;
@@ -64,12 +64,11 @@ pub fn main() !void {
         const v = trim(pair.next()) orelse {
             continue;
         };
-        headers[i] = .{ .name = h, .value = v };
+        try list.append(.{ .name = h, .value = v });
     }
 
-    //http_client.open(method: http.Method, uri: Uri, options: RequestOptions)
     var header_buffer: [4096]u8 = undefined;
-    var req = try http_client.open(.GET, uri, .{ .server_header_buffer = &header_buffer, .extra_headers = headers });
+    var req = try http_client.open(.GET, uri, .{ .server_header_buffer = &header_buffer, .extra_headers = list.items });
     defer req.deinit();
 
     try req.send();
