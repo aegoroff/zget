@@ -40,11 +40,18 @@ pub fn main() !void {
     const file_name = std.fs.path.basename(uri.path.percent_encoded);
     // Calculate target file path
     var target = res.args.output orelse file_name;
-    var optional_d = std.fs.openDirAbsolute(target, .{}) catch null;
+
+    var optional_d: ?std.fs.Dir = undefined;
+    if (std.fs.path.isAbsolute(target)) {
+        optional_d = std.fs.openDirAbsolute(target, .{}) catch null;
+    } else {
+        optional_d = std.fs.cwd().openDir(target, .{}) catch null;
+    }
     if (optional_d != null) {
         optional_d.?.close();
         target = try std.fs.path.join(arena.allocator(), &[_][]const u8{ target, file_name });
     }
+
     if (target.len == 0) {
         // if no file name from URI and nothing set using cli option
         // treat this as error
@@ -82,7 +89,14 @@ pub fn main() !void {
     }
 
     const file_options = .{ .read = false };
-    var file = if (std.mem.eql(u8, target, file_name)) try std.fs.cwd().createFile(file_name, file_options) else try std.fs.createFileAbsolute(target, file_options);
+    var file: std.fs.File = undefined;
+    if (std.mem.eql(u8, target, file_name)) {
+        file = try std.fs.cwd().createFile(file_name, file_options);
+    } else if (std.fs.path.isAbsolute(target)) {
+        file = try std.fs.createFileAbsolute(target, file_options);
+    } else {
+        file = try std.fs.cwd().createFile(target, file_options);
+    }
     defer file.close();
 
     var buf = try arena.allocator().alloc(u8, 16 * 4096);
