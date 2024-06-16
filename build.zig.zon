@@ -5,8 +5,8 @@
     .dependencies = .{
         .clap = .{
             // the url to the release of the module
-            .url = "https://github.com/Hejsil/zig-clap/archive/refs/heads/master.tar.gz",
-            .hash = "1220c900c70daf3e715fad6f266ec14b1d0f5e6c2d3f34b32142f60306cb9b5e5f05",
+            .url = "https://github.com/Hejsil/zig-clap/archive/refs/tags/0.8.0.tar.gz",
+            .hash = "1220949d4e88864579067b6d4cdad6476c6176f27e782782c2c39b7f2c4817a10efb",
         },
     },
 }
