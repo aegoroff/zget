@@ -65,13 +65,11 @@ pub fn main() !void {
     var list = std.ArrayList(std.http.Header).init(arena.allocator());
     for (res.args.header) |s| {
         var pair = std.mem.splitScalar(u8, s, ':');
-        const h = trim(pair.next()) orelse {
-            continue;
-        };
-        const v = trim(pair.next()) orelse {
-            continue;
-        };
-        try list.append(.{ .name = h, .value = v });
+        const h = trim(pair.next());
+        const v = trim(pair.next());
+        if (h != null and v != null) {
+            try list.append(.{ .name = h.?, .value = v.? });
+        }
     }
 
     var header_buffer: [4096]u8 = undefined;
