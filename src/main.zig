@@ -101,7 +101,7 @@ pub fn main() !void {
     const max_errors = 10;
     var errors: i16 = 0;
     var read_bytes: usize = 0;
-    var progress = std.Progress{};
+    var progress = std.Progress.start(.{});
     var percent_progress = progress.start("Downloading", 100);
     defer percent_progress.end();
     percent_progress.setUnit(" %");
