@@ -139,12 +139,17 @@ pub fn main() !void {
 const ZgetError = error{ResultFileNotSet};
 
 fn percent(comptime T: type, completed: T, total: T) T {
+    const v = div(T, completed, total);
+    return @intFromFloat(v * 100);
+}
+
+fn div(comptime T: type, completed: T, total: T) f32 {
     const x = @as(f32, @floatFromInt(completed));
     const y = @as(f32, @floatFromInt(total));
     if (y == 0) {
         return 0;
     }
-    return @intFromFloat((x / y) * 100);
+    return x / y;
 }
 
 fn trim(s: ?[]const u8) ?[]const u8 {
