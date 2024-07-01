@@ -102,15 +102,12 @@ pub fn main() !void {
     var errors: i16 = 0;
     var read_bytes: usize = 0;
     var progress = std.Progress.start(.{});
-    var percent_progress = progress.start(" %", 100);
+    var percent_progress = progress.start("%", 100);
     defer percent_progress.end();
-    //percent_progress.setUnit(" %");
     var bytes_progress = percent_progress.start("bytes", content_size_bytes);
     defer bytes_progress.end();
-    //bytes_progress.setUnit(" bytes");
-    var speed_progress = bytes_progress.start(" KiB/sec", 0);
+    var speed_progress = percent_progress.start("MiB/sec", 0);
     defer speed_progress.end();
-    //speed_progress.setUnit(" KiB/sec");
     var timer = try std.time.Timer.start();
     while (true) {
         const read = req.reader().read(buf) catch |err| {
@@ -126,18 +123,12 @@ pub fn main() !void {
         const elapsed = timer.read() / 1000000000;
         if (elapsed > 0) {
             const kbytes = read_bytes / 1024;
-            //var value = kbytes;
-            // if (kbytes > 1024) {
-            //     value = kbytes / 1024;
-            //     speed_progress.setUnit(" MiB/sec");
-            // }
-            const speed = kbytes / elapsed;
+            const speed = (kbytes / 1024) / elapsed;
             speed_progress.setCompletedItems(speed);
         }
 
         percent_progress.setCompletedItems(percent(usize, read_bytes, content_size_bytes));
         bytes_progress.setCompletedItems(read_bytes);
-        //progress.maybeRefresh();
         if (read == 0) {
             break;
         }
