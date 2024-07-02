@@ -101,12 +101,11 @@ pub fn main() !void {
     const max_errors = 10;
     var errors: i16 = 0;
     var read_bytes: usize = 0;
-    var progress = std.Progress.start(.{});
-    var percent_progress = progress.start("%", 100);
-    defer percent_progress.end();
-    var bytes_progress = percent_progress.start("bytes", content_size_bytes);
+    var progress = std.Progress.start(.{ .root_name = "%", .estimated_total_items = 100 });
+    defer progress.end();
+    var bytes_progress = progress.start("bytes", content_size_bytes);
     defer bytes_progress.end();
-    var speed_progress = percent_progress.start("MiB/sec", 0);
+    var speed_progress = progress.start("MiB/sec", 0);
     defer speed_progress.end();
     var timer = try std.time.Timer.start();
     while (true) {
@@ -127,7 +126,7 @@ pub fn main() !void {
             speed_progress.setCompletedItems(speed);
         }
 
-        percent_progress.setCompletedItems(percent(usize, read_bytes, content_size_bytes));
+        progress.setCompletedItems(percent(usize, read_bytes, content_size_bytes));
         bytes_progress.setCompletedItems(read_bytes);
         if (read == 0) {
             break;
