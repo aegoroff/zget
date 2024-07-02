@@ -73,7 +73,10 @@ pub fn main() !void {
     }
 
     var header_buffer: [4096]u8 = undefined;
-    var req = try http_client.open(.GET, uri, .{ .server_header_buffer = &header_buffer, .extra_headers = list.items });
+    var req = try http_client.open(.GET, uri, .{
+        .server_header_buffer = &header_buffer,
+        .extra_headers = list.items,
+    });
     defer req.deinit();
 
     try req.send();
@@ -83,7 +86,8 @@ pub fn main() !void {
 
     const content_size_bytes = req.response.content_length orelse 0;
     if (content_size_bytes > 0) {
-        try stdout.print("Content-size: {:.2} ({d} bytes)\n", .{ std.fmt.fmtIntSizeBin(content_size_bytes), content_size_bytes });
+        const args = .{ std.fmt.fmtIntSizeBin(content_size_bytes), content_size_bytes };
+        try stdout.print("Content-size: {:.2} ({d} bytes)\n", args);
     }
 
     const file_options = .{ .read = false };
