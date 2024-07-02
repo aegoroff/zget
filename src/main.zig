@@ -112,6 +112,10 @@ pub fn main() !void {
     var speed_progress = progress.start("MiB/sec", 0);
     defer speed_progress.end();
     var timer = try std.time.Timer.start();
+    defer {
+        const elapsed = timer.read();
+        stdout.print("Time taken: {0}\n", .{std.fmt.fmtDuration(elapsed)}) catch {};
+    }
     while (true) {
         const read = req.reader().read(buf) catch |err| {
             try stdout.print("Error: {}\n", .{err});
@@ -137,8 +141,6 @@ pub fn main() !void {
         }
         try file.writeAll(buf[0..read]);
     }
-    const elapsed = timer.read();
-    try stdout.print("Time taken: {0}\n", .{std.fmt.fmtDuration(elapsed)});
 }
 
 const ZgetError = error{ResultFileNotSet};
