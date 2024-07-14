@@ -108,7 +108,7 @@ pub fn main() !void {
     var read_bytes: usize = 0;
     var progress = std.Progress.start(.{ .root_name = "%", .estimated_total_items = 100 });
     defer progress.end();
-    var bytes_progress = progress.start("bytes", content_size_bytes);
+    var bytes_progress = progress.start("bytes", @intCast(content_size_bytes));
     defer bytes_progress.end();
     var speed_progress = progress.start("MiB/sec", 0);
     defer speed_progress.end();
@@ -132,10 +132,10 @@ pub fn main() !void {
         if (elapsed > 0) {
             const kbytes = read_bytes / 1024;
             const speed = (kbytes / 1024) / elapsed;
-            speed_progress.setCompletedItems(speed);
+            speed_progress.setCompletedItems(@intCast(speed));
         }
 
-        progress.setCompletedItems(percent(usize, read_bytes, content_size_bytes));
+        progress.setCompletedItems(percent(usize, read_bytes, @intCast(content_size_bytes)));
         bytes_progress.setCompletedItems(read_bytes);
         if (read == 0) {
             break;
