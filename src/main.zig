@@ -1,5 +1,6 @@
 const std = @import("std");
 const clap = @import("clap");
+const http = std.http;
 
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
@@ -85,6 +86,11 @@ pub fn main() !void {
     const content_type = req.response.content_type orelse "text/plain";
     try stdout.print("Content-type: {s}\n", .{content_type});
 
+    if (req.response.status != http.Status.ok) {
+        try stdout.print("Http response: {d}\n", .{@intFromEnum(req.response.status)});
+        return ZgetError.HttpError;
+    }
+
     const content_size_bytes = req.response.content_length orelse 0;
     if (content_size_bytes > 0) {
         const args = .{ std.fmt.fmtIntSizeBin(content_size_bytes), content_size_bytes };
@@ -144,7 +150,7 @@ pub fn main() !void {
     }
 }
 
-const ZgetError = error{ResultFileNotSet};
+const ZgetError = error{ ResultFileNotSet, HttpError };
 
 fn percent(comptime T: type, completed: T, total: T) T {
     const v = div(T, completed, total);
