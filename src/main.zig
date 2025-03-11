@@ -35,8 +35,8 @@ pub fn main() !void {
         return clap.help(stdout, clap.Help, &params, .{});
     };
 
-    try stdout.print("URI: {s}\n", .{source});
-    const uri = try std.Uri.parse(source);
+    try stdout.print("URI: {s}\n", .{source.?});
+    const uri = try std.Uri.parse(source.?);
 
     const file_name = std.fs.path.basename(uri.path.percent_encoded);
     // Calculate target file path
@@ -97,7 +97,7 @@ pub fn main() !void {
         try stdout.print("Content-size: {:.2} ({d} bytes)\n", args);
     }
 
-    const file_options = .{ .read = false };
+    const file_options = std.fs.File.CreateFlags{ .read = false };
     var file: std.fs.File = undefined;
     if (std.mem.eql(u8, target, file_name)) {
         file = try std.fs.cwd().createFile(file_name, file_options);
