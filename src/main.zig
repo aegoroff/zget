@@ -3,7 +3,12 @@ const clap = @import("clap");
 const http = std.http;
 
 pub fn main() !void {
-    const stdout = std.io.getStdOut().writer();
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    const stdout = &stdout_writer.interface;
+    defer {
+        stdout.flush() catch {};
+    }
 
     const params = comptime clap.parseParamsComptime(
         \\-h, --help             Display this help and exit.
@@ -63,38 +68,39 @@ pub fn main() !void {
     var http_client = std.http.Client{
         .allocator = arena.allocator(),
     };
-    var extra_headers = std.ArrayList(std.http.Header).init(arena.allocator());
+    var extra_headers = std.ArrayList(std.http.Header){};
     for (res.args.header) |s| {
         var pair = std.mem.splitScalar(u8, s, ':');
         const h = trim(pair.next());
         const v = trim(pair.next());
         if (h != null and v != null) {
-            try extra_headers.append(.{ .name = h.?, .value = v.? });
+            try extra_headers.append(arena.allocator(), .{ .name = h.?, .value = v.? });
         }
     }
 
-    var header_buffer = try std.ArrayList(u8).initCapacity(arena.allocator(), 65536);
-    header_buffer.expandToCapacity();
-    var req = try http_client.open(.GET, uri, .{
-        .server_header_buffer = header_buffer.items,
+    var req = try http_client.request(.GET, uri, .{
         .extra_headers = extra_headers.items,
     });
     defer req.deinit();
 
-    try req.send();
-    try req.wait();
-    const content_type = req.response.content_type orelse "text/plain";
+    try req.sendBodiless();
+
+    var header_buffer = try std.ArrayList(u8).initCapacity(arena.allocator(), 65536);
+    header_buffer.expandToCapacity();
+    var response = try req.receiveHead(header_buffer.items);
+
+    const content_type = response.head.content_type orelse "text/plain";
     try stdout.print("Content-type: {s}\n", .{content_type});
 
-    if (req.response.status != http.Status.ok) {
-        try stdout.print("Http response: {d}\n", .{@intFromEnum(req.response.status)});
+    if (response.head.status != http.Status.ok) {
+        try stdout.print("Http response: {d}\n", .{@intFromEnum(response.head.status)});
         return ZgetError.HttpError;
     }
 
-    const content_size_bytes = req.response.content_length orelse 0;
+    const content_size_bytes = response.head.content_length orelse 0;
     if (content_size_bytes > 0) {
-        const args = .{ std.fmt.fmtIntSizeBin(content_size_bytes), content_size_bytes };
-        try stdout.print("Content-size: {:.2} ({d} bytes)\n", args);
+        const args = .{ content_size_bytes, content_size_bytes };
+        try stdout.print("Content-size: {Bi:.2} ({d} bytes)\n", args);
     }
 
     const file_options = std.fs.File.CreateFlags{ .read = false };
@@ -108,7 +114,15 @@ pub fn main() !void {
     }
     defer file.close();
 
-    var buf = try arena.allocator().alloc(u8, 16 * 4096);
+    const read_buf_len = 16 * 4096;
+    var file_buffer: [read_buf_len]u8 = undefined;
+    var file_writer = file.writer(&file_buffer);
+    const file_interface = &file_writer.interface;
+    defer {
+        file_interface.flush() catch {};
+    }
+
+    const read_buf = try arena.allocator().alloc(u8, read_buf_len);
     const max_errors = 10;
     var errors: i16 = 0;
     var read_bytes: usize = 0;
@@ -121,16 +135,24 @@ pub fn main() !void {
     var timer = try std.time.Timer.start();
     defer {
         const elapsed = timer.read();
-        stdout.print("Time taken: {0}\n", .{std.fmt.fmtDuration(elapsed)}) catch {};
+        stdout.print("Time taken: {D:0}\n", .{elapsed}) catch {};
     }
+    var reader = response.reader(read_buf);
     while (true) {
-        const read = req.reader().read(buf) catch |err| {
-            try stdout.print("Error: {}\n", .{err});
-            if (errors < max_errors) {
-                errors += 1;
-                continue;
-            } else {
-                break;
+        const read = reader.stream(file_interface, .limited(read_buf_len)) catch |err| {
+            switch (err) {
+                error.EndOfStream => {
+                    break;
+                },
+                else => |e| {
+                    try stdout.print("Error: {}\n", .{e});
+                    if (errors < max_errors) {
+                        errors += 1;
+                        continue;
+                    } else {
+                        break;
+                    }
+                },
             }
         };
         read_bytes += read;
@@ -143,10 +165,6 @@ pub fn main() !void {
 
         progress.setCompletedItems(percent(usize, read_bytes, @intCast(content_size_bytes)));
         bytes_progress.setCompletedItems(read_bytes);
-        if (read == 0) {
-            break;
-        }
-        try file.writeAll(buf[0..read]);
     }
 }
 
