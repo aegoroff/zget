@@ -135,10 +135,9 @@ pub fn main() !void {
     defer {
         const elapsed = timer.read();
         stdout.print("Time taken: {D:0}\n", .{elapsed}) catch {};
-        const kbytes = read_bytes / 1024;
-        const speed = (kbytes / 1024) / (elapsed / 1000000000);
+        const speed = read_bytes / (elapsed / 1000); // bytes / per microsecond
         stdout.print("Read: {0} bytes\n", .{read_bytes}) catch {};
-        stdout.print("Speed: {0} MiB/sec\n", .{speed}) catch {};
+        stdout.print("Speed: {0Bi:.2}/sec\n", .{speed * 1000000}) catch {};
     }
     var reader = response.reader(read_buf);
     while (true) {
