@@ -99,8 +99,7 @@ pub fn main() !void {
 
     const content_size_bytes = response.head.content_length orelse 0;
     if (content_size_bytes > 0) {
-        const args = .{ content_size_bytes, content_size_bytes };
-        try stdout.print("Content-size: {Bi:.2} ({d} bytes)\n", args);
+        try stdout.print("Content-size: {0Bi:.2} ({0} bytes)\n", .{content_size_bytes});
     }
 
     const file_options = std.fs.File.CreateFlags{ .read = false };
