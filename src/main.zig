@@ -68,19 +68,23 @@ pub fn main() !void {
     var http_client = std.http.Client{
         .allocator = arena.allocator(),
     };
-    var extra_headers = std.ArrayList(std.http.Header){};
-    for (res.args.header) |s| {
-        var pair = std.mem.splitScalar(u8, s, ':');
-        const h = trim(pair.next());
-        const v = trim(pair.next());
-        if (h != null and v != null) {
-            try extra_headers.append(arena.allocator(), .{ .name = h.?, .value = v.? });
+    var req: std.http.Client.Request = undefined;
+    if (res.args.header.len > 0) {
+        var extra_headers = std.ArrayList(std.http.Header){};
+        for (res.args.header) |s| {
+            var pair = std.mem.splitScalar(u8, s, ':');
+            const h = trim(pair.next());
+            const v = trim(pair.next());
+            if (h != null and v != null) {
+                try extra_headers.append(arena.allocator(), .{ .name = h.?, .value = v.? });
+            }
         }
+        req = try http_client.request(.GET, uri, .{
+            .extra_headers = extra_headers.items,
+        });
+    } else {
+        req = try http_client.request(.GET, uri, .{});
     }
-
-    var req = try http_client.request(.GET, uri, .{
-        .extra_headers = extra_headers.items,
-    });
     defer req.deinit();
 
     try req.sendBodiless();
