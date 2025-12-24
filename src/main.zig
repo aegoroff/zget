@@ -176,7 +176,7 @@ pub fn main() !void {
 
 const ZgetError = error{ ResultFileNotSet, HttpError };
 
-fn percent(comptime T: type, completed: T, total: T) T {
+fn percent(comptime T: type, completed: T, total: T) usize {
     const v = div(T, completed, total);
     return @intFromFloat(v * 100);
 }
