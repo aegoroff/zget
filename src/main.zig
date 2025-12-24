@@ -1,5 +1,6 @@
 const std = @import("std");
 const clap = @import("clap");
+const transport = @import("transport.zig");
 const http = std.http;
 
 pub fn main() !void {
@@ -65,26 +66,9 @@ pub fn main() !void {
     }
     // Calculate target file path completed
 
-    var http_client = std.http.Client{
-        .allocator = arena.allocator(),
-    };
-    var req: std.http.Client.Request = undefined;
-    if (res.args.header.len > 0) {
-        var extra_headers = std.ArrayList(std.http.Header){};
-        for (res.args.header) |s| {
-            var pair = std.mem.splitScalar(u8, s, ':');
-            const h = trim(pair.next());
-            const v = trim(pair.next());
-            if (h != null and v != null) {
-                try extra_headers.append(arena.allocator(), .{ .name = h.?, .value = v.? });
-            }
-        }
-        req = try http_client.request(.GET, uri, .{
-            .extra_headers = extra_headers.items,
-        });
-    } else {
-        req = try http_client.request(.GET, uri, .{});
-    }
+    var client = transport.Transport.init(arena.allocator());
+
+    var req = try client.get(uri, res.args.header);
     defer req.deinit();
 
     try req.sendBodiless();
@@ -190,27 +174,6 @@ fn div(comptime T: type, completed: T, total: T) f32 {
     return x / y;
 }
 
-fn trim(s: ?[]const u8) ?[]const u8 {
-    const slice = s orelse {
-        return s;
-    };
-    return std.mem.trim(u8, slice, " ");
-}
-
-test "trim not needed" {
-    const i: ?[]const u8 = "1234";
-    try std.testing.expectEqualStrings("1234", trim(i) orelse "");
-}
-
-test "trim null" {
-    try std.testing.expectEqual(@as(?[]const u8, null), trim(null));
-}
-
-test "trim null with whitespaces" {
-    const i: ?[]const u8 = " 1234 ";
-    try std.testing.expectEqualStrings("1234", trim(i) orelse "");
-}
-
 test "percent 0" {
     const expected: usize = 0;
     try std.testing.expectEqual(expected, percent(usize, 10, 0));
@@ -239,4 +202,8 @@ test "percent 70" {
 test "percent 70 (int)" {
     const expected: i32 = 70;
     try std.testing.expectEqual(expected, percent(i32, 700, 1000));
+}
+
+test {
+    @import("std").testing.refAllDecls(@This());
 }
