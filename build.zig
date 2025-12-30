@@ -48,6 +48,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     unit_tests.root_module.addImport("yazap", yazap.module("yazap"));
+    unit_tests.root_module.addImport("build_options", options.createModule());
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
 

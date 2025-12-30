@@ -71,8 +71,8 @@ pub fn main() !void {
     } else {
         optional_d = std.fs.cwd().openDir(target, .{}) catch null;
     }
-    if (optional_d) |dir| {
-        dir.close();
+    if (optional_d != null) {
+        optional_d.?.close();
         target = try std.fs.path.join(arena.allocator(), &[_][]const u8{ target, file_name });
     }
 
@@ -85,7 +85,8 @@ pub fn main() !void {
 
     var client = transport.Transport.init(arena.allocator());
 
-    var req = try client.get(uri, matches.getMultiValues("header"));
+    const headers = matches.getMultiValues("header") orelse &[_][]const u8{};
+    var req = try client.get(uri, headers);
 
     defer req.deinit();
 
