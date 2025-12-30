@@ -16,9 +16,9 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .target = target,
             .strip = strip,
+            .link_libc = true,
         }),
     });
-    exe.linkLibC();
 
     const yazap = b.dependency("yazap", .{});
     exe.root_module.addImport("yazap", yazap.module("yazap"));
@@ -44,8 +44,10 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/main.zig"),
             .optimize = optimize,
             .target = target,
+            .link_libc = true,
         }),
     });
+    unit_tests.root_module.addImport("yazap", yazap.module("yazap"));
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
 
