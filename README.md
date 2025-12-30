@@ -19,7 +19,7 @@ A non-interactive network retriever implemented in Zig, similar to `wget` or `cu
 
 ### Building from Source
 
-Requires [Zig](https://ziglang.org/) 0.12.0 or later.
+Requires [Zig](https://ziglang.org/) 0.15.0 or later.
 
 ```bash
 # Clone the repository
