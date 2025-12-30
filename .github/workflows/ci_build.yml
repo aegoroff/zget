@@ -36,22 +36,22 @@ jobs:
             abi: musl
             os: linux
             arch: x86_64
-            processor: haswell
+            processor: core2
           - target: x86_64-windows-gnu
             abi: gnu
             os: windows
             arch: x86_64
-            processor: haswell
+            processor: core2
+          - target: x86_64-macos-none
+            abi: none
+            os: macos
+            arch: x86_64
+            processor: core2
           - target: aarch64-linux-musl
             abi: musl
             os: linux
             arch: aarch64
             processor: ""
-          - target: x86_64-macos-none
-            abi: none
-            os: macos
-            arch: x86_64
-            processor: haswell
           - target: aarch64-macos-none
             abi: none
             os: macos
