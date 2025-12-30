@@ -1,5 +1,7 @@
 const std = @import("std");
-const clap = @import("clap");
+const yazap = @import("yazap");
+const builtin = @import("builtin");
+const build_options = @import("build_options");
 const http = std.http;
 
 pub fn main() !void {
@@ -10,42 +12,57 @@ pub fn main() !void {
         stdout.flush() catch {};
     }
 
-    const params = comptime clap.parseParamsComptime(
-        \\-h, --help             Display this help and exit.
-        \\-O, --output <str>     Path the result will saved to. If it's a directory file name will be get from URI file name part.
-        \\-H, --header <str>...  Additional HTTP header(s).
-        \\ <str>                 Uri to download.
-    );
-
     const allocator = std.heap.c_allocator;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
+    const query = std.Target.Query.fromTarget(&builtin.target);
 
-    var diag = clap.Diagnostic{};
-    var res = clap.parse(clap.Help, &params, clap.parsers.default, .{
-        .diagnostic = &diag,
-        .allocator = arena.allocator(),
-    }) catch |err| {
-        // Report useful error and exit
-        diag.report(stdout, err) catch {};
-        return err;
-    };
-    defer res.deinit();
+    const app_descr_template =
+        \\Zget {s} ({s}), a non-interactive network retriever implemented in Zig
+        \\Copyright (C) 2025 Alexander Egorov. All rights reserved.
+    ;
+    const app_descr = try std.fmt.allocPrint(
+        allocator,
+        app_descr_template,
+        .{ build_options.version, @tagName(query.cpu_arch.?) },
+    );
 
-    if (res.args.help != 0) {
-        return clap.help(stdout, clap.Help, &params, .{});
-    }
+    var app = yazap.App.init(allocator, "zget", app_descr);
+    defer app.deinit();
 
-    const source = if (res.positionals.len == 1) res.positionals[0] else {
-        return clap.help(stdout, clap.Help, &params, .{});
-    };
+    var root_cmd = app.rootCommand();
+    root_cmd.setProperty(.help_on_empty_args);
+    root_cmd.setProperty(.positional_arg_required);
+    const headers_opt = yazap.Arg.multiValuesOption(
+        "header",
+        'H',
+        "Additional HTTP header(s)",
+        512,
+    );
+    const uri_opt = yazap.Arg.positional("URI", "Uri to download", null);
+
+    var output_opt = yazap.Arg.singleValueOption(
+        "output",
+        'O',
+        "Path the result will saved to. If it's a directory file name will be get from URI file name part",
+    );
+    output_opt.setValuePlaceholder("STRING");
+    output_opt.setProperty(.takes_value);
+
+    try root_cmd.addArg(headers_opt);
+    try root_cmd.addArg(output_opt);
+    try root_cmd.addArg(uri_opt);
+
+    const matches = try app.parseProcess();
+
+    const source = matches.getSingleValue("URI");
 
     try stdout.print("URI: {s}\n", .{source.?});
     const uri = try std.Uri.parse(source.?);
 
     const file_name = std.fs.path.basename(uri.path.percent_encoded);
     // Calculate target file path
-    var target = res.args.output orelse file_name;
+    var target = matches.getSingleValue("output") orelse file_name;
 
     var optional_d: ?std.fs.Dir = undefined;
     if (std.fs.path.isAbsolute(target)) {
@@ -53,8 +70,8 @@ pub fn main() !void {
     } else {
         optional_d = std.fs.cwd().openDir(target, .{}) catch null;
     }
-    if (optional_d != null) {
-        optional_d.?.close();
+    if (optional_d) |dir| {
+        dir.close();
         target = try std.fs.path.join(arena.allocator(), &[_][]const u8{ target, file_name });
     }
 
@@ -69,9 +86,10 @@ pub fn main() !void {
         .allocator = arena.allocator(),
     };
     var req: std.http.Client.Request = undefined;
-    if (res.args.header.len > 0) {
+
+    if (matches.getMultiValues("header")) |headers| {
         var extra_headers = std.ArrayList(std.http.Header){};
-        for (res.args.header) |s| {
+        for (headers) |s| {
             var pair = std.mem.splitScalar(u8, s, ':');
             const h = trim(pair.next());
             const v = trim(pair.next());
