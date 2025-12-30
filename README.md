@@ -118,7 +118,7 @@ zig build run -- <arguments>
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE.txt) file for details.
 
 ## Copyright
 
