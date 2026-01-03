@@ -23,12 +23,12 @@ pub fn main() !void {
         \\Copyright (C) 2025 Alexander Egorov. All rights reserved.
     ;
     const app_descr = try std.fmt.allocPrint(
-        allocator,
+        arena.allocator(),
         app_descr_template,
         .{ build_options.version, @tagName(query.cpu_arch.?) },
     );
 
-    var app = yazap.App.init(allocator, "zget", app_descr);
+    var app = yazap.App.init(arena.allocator(), "zget", app_descr);
     defer app.deinit();
 
     var root_cmd = app.rootCommand();
@@ -54,7 +54,8 @@ pub fn main() !void {
     try root_cmd.addArg(output_opt);
     try root_cmd.addArg(uri_opt);
 
-    const matches = try app.parseProcess();
+    const argv = try std.process.argsAlloc(arena.allocator());
+    const matches = try app.parseFrom(argv[1..]);
 
     const source = matches.getSingleValue("URI");
 
