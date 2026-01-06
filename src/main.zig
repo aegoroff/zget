@@ -20,7 +20,7 @@ pub fn main() !void {
 
     const app_descr_template =
         \\Zget {s} ({s}), a non-interactive network retriever implemented in Zig
-        \\Copyright (C) 2025 Alexander Egorov. All rights reserved.
+        \\Copyright (C) 2025-2026 Alexander Egorov. All rights reserved.
     ;
     const app_descr = try std.fmt.allocPrint(
         arena.allocator(),
