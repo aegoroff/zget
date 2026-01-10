@@ -2,14 +2,14 @@ pub const Transport = @This();
 const std = @import("std");
 const http = std.http;
 
-allocator: std.mem.Allocator,
+gpa: std.mem.Allocator,
 http_client: std.http.Client,
 
-pub fn init(allocator: std.mem.Allocator) Transport {
+pub fn init(gpa: std.mem.Allocator) Transport {
     return Transport{
-        .allocator = allocator,
+        .gpa = gpa,
         .http_client = std.http.Client{
-            .allocator = allocator,
+            .allocator = gpa,
         },
     };
 }
@@ -23,7 +23,7 @@ pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8) http.Cli
             const h = trim(pair.next());
             const v = trim(pair.next());
             if (h != null and v != null) {
-                try extra_headers.append(self.allocator, .{ .name = h.?, .value = v.? });
+                try extra_headers.append(self.gpa, .{ .name = h.?, .value = v.? });
             }
         }
         req_options = .{
