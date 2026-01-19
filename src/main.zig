@@ -143,9 +143,9 @@ pub fn main() !void {
     defer {
         const elapsed = timer.read();
         stdout.print("Time taken: {D:0}\n", .{elapsed}) catch {};
-        const speed = read_bytes / (elapsed / 1000); // bytes / per microsecond
+        const speed = read_bytes / (elapsed / 1000000000); // bytes / per second
         stdout.print("Read: {0} bytes\n", .{read_bytes}) catch {};
-        stdout.print("Speed: {0Bi:.2}/sec\n", .{speed * 1000000}) catch {};
+        stdout.print("Speed: {0Bi:.2}/sec\n", .{speed}) catch {};
     }
     var reader = response.reader(read_buf);
     while (true) {
@@ -169,7 +169,17 @@ pub fn main() !void {
         const elapsed = timer.read() / 1000000000;
         if (elapsed > 0) {
             const kbytes = read_bytes / 1024;
-            const speed = (kbytes / 1024) / elapsed;
+            var speed = (kbytes / 1024) / elapsed;
+            if (speed == 0) {
+                speed = kbytes / elapsed;
+                speed_progress.setName("KiB/sec");
+                if (speed == 0) {
+                    speed = read_bytes / elapsed;
+                    speed_progress.setName("bytes/sec");
+                }
+            } else {
+                speed_progress.setName("MiB/sec");
+            }
             speed_progress.setCompletedItems(@intCast(speed));
         }
 
