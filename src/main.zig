@@ -129,6 +129,10 @@ pub fn main() !void {
         file_interface.flush() catch {};
     }
 
+    const mibs_per_sec: []const u8 = "MiB/sec";
+    const kibs_per_sec: []const u8 = "KiB/sec";
+    const bytes_per_sec: []const u8 = "bytes/sec";
+
     const read_buf = try arena.allocator().alloc(u8, read_buf_len);
     const max_errors = 10;
     var errors: i16 = 0;
@@ -137,13 +141,13 @@ pub fn main() !void {
     defer progress.end();
     var bytes_progress = progress.start("bytes", @intCast(content_size_bytes));
     defer bytes_progress.end();
-    var speed_progress = progress.start("MiB/sec", 0);
+    var speed_progress = progress.start(mibs_per_sec, 0);
     defer speed_progress.end();
     var timer = try std.time.Timer.start();
     defer {
         const elapsed = timer.read();
         stdout.print("Time taken: {D:0}\n", .{elapsed}) catch {};
-        const speed = read_bytes / (elapsed / 1000000000); // bytes / per second
+        const speed = read_bytes / (elapsed / 1000000000); // bytes/sec
         stdout.print("Read: {0} bytes\n", .{read_bytes}) catch {};
         stdout.print("Speed: {0Bi:.2}/sec\n", .{speed}) catch {};
     }
@@ -166,19 +170,20 @@ pub fn main() !void {
             }
         };
         read_bytes += read;
-        const elapsed = timer.read() / 1000000000;
+        const elapsed = timer.read() / 1000000000; // nanoseconds to seconds
         if (elapsed > 0) {
             const kbytes = read_bytes / 1024;
-            var speed = (kbytes / 1024) / elapsed;
+            var speed = (kbytes / 1024) / elapsed; // MiB/sec
             if (speed == 0) {
-                speed = kbytes / elapsed;
-                speed_progress.setName("KiB/sec");
+                speed = kbytes / elapsed; // KiB/sec
                 if (speed == 0) {
-                    speed = read_bytes / elapsed;
-                    speed_progress.setName("bytes/sec");
+                    speed = read_bytes / elapsed; // bytes/sec
+                    speed_progress.setName(bytes_per_sec);
+                } else {
+                    speed_progress.setName(kibs_per_sec);
                 }
             } else {
-                speed_progress.setName("MiB/sec");
+                speed_progress.setName(mibs_per_sec);
             }
             speed_progress.setCompletedItems(@intCast(speed));
         }
