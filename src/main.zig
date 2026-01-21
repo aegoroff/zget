@@ -147,7 +147,7 @@ pub fn main() !void {
     defer {
         const elapsed = timer.read();
         stdout.print("Time taken: {D:0}\n", .{elapsed}) catch {};
-        const speed = read_bytes / (elapsed / 1000000000); // bytes/sec
+        const speed = read_bytes / seconds(elapsed); // bytes/sec
         stdout.print("Read: {0} bytes\n", .{read_bytes}) catch {};
         stdout.print("Speed: {0Bi:.2}/sec\n", .{speed}) catch {};
     }
@@ -170,7 +170,7 @@ pub fn main() !void {
             }
         };
         read_bytes += read;
-        const elapsed = timer.read() / 1000000000; // nanoseconds to seconds
+        const elapsed = seconds(timer.read());
         if (elapsed > 0) {
             const kbytes = read_bytes / 1024;
             var speed = (kbytes / 1024) / elapsed; // MiB/sec
@@ -198,6 +198,10 @@ const ZgetError = error{ ResultFileNotSet, HttpError };
 fn percent(comptime T: type, completed: T, total: T) usize {
     const v = div(T, completed, total);
     return @intFromFloat(v * 100);
+}
+
+fn seconds(nanoseconds: u64) u64 {
+    return nanoseconds / 1000000000;
 }
 
 fn div(comptime T: type, completed: T, total: T) f32 {
