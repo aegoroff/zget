@@ -5,11 +5,12 @@ const http = std.http;
 gpa: std.mem.Allocator,
 http_client: std.http.Client,
 
-pub fn init(gpa: std.mem.Allocator) Transport {
+pub fn init(gpa: std.mem.Allocator, io: std.Io) Transport {
     return Transport{
         .gpa = gpa,
         .http_client = std.http.Client{
             .allocator = gpa,
+            .io = io,
         },
     };
 }

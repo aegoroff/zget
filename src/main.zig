@@ -5,9 +5,9 @@ const build_options = @import("build_options");
 const transport = @import("transport.zig");
 const http = std.http;
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
     defer {
         stdout.flush() catch {};
@@ -54,8 +54,7 @@ pub fn main() !void {
     try root_cmd.addArg(output_opt);
     try root_cmd.addArg(uri_opt);
 
-    const argv = try std.process.argsAlloc(arena.allocator());
-    const matches = try app.parseFrom(argv[1..]);
+    const matches = try app.parseProcess(init.io, init.minimal.args);
 
     const source = matches.getSingleValue("URI");
 
@@ -66,14 +65,14 @@ pub fn main() !void {
     // Calculate target file path
     var target = matches.getSingleValue("output") orelse file_name;
 
-    var optional_d: ?std.fs.Dir = undefined;
+    var optional_d: ?std.Io.Dir = undefined;
     if (std.fs.path.isAbsolute(target)) {
-        optional_d = std.fs.openDirAbsolute(target, .{}) catch null;
+        optional_d = std.Io.Dir.openDirAbsolute(init.io, target, .{}) catch null;
     } else {
-        optional_d = std.fs.cwd().openDir(target, .{}) catch null;
+        optional_d = std.Io.Dir.cwd().openDir(init.io, target, .{}) catch null;
     }
     if (optional_d != null) {
-        optional_d.?.close();
+        optional_d.?.close(init.io);
         target = try std.fs.path.join(arena.allocator(), &[_][]const u8{ target, file_name });
     }
 
@@ -84,7 +83,7 @@ pub fn main() !void {
     }
     // Calculate target file path completed
 
-    var client = transport.Transport.init(arena.allocator());
+    var client = transport.Transport.init(arena.allocator(), init.io);
 
     const headers = matches.getMultiValues("header") orelse &[_][]const u8{};
     var req = try client.get(uri, headers);
@@ -110,20 +109,20 @@ pub fn main() !void {
         try stdout.print("Content-size: {0Bi:.2} ({0} bytes)\n", .{content_size_bytes});
     }
 
-    const file_options = std.fs.File.CreateFlags{ .read = false };
-    var file: std.fs.File = undefined;
+    const file_options = std.Io.File.CreateFlags{ .read = false };
+    var file: std.Io.File = undefined;
     if (std.mem.eql(u8, target, file_name)) {
-        file = try std.fs.cwd().createFile(file_name, file_options);
+        file = try std.Io.Dir.cwd().createFile(init.io, file_name, file_options);
     } else if (std.fs.path.isAbsolute(target)) {
-        file = try std.fs.createFileAbsolute(target, file_options);
+        file = try std.Io.Dir.createFileAbsolute(init.io, target, file_options);
     } else {
-        file = try std.fs.cwd().createFile(target, file_options);
+        file = try std.Io.Dir.cwd().createFile(init.io, target, file_options);
     }
-    defer file.close();
+    defer file.close(init.io);
 
     const read_buf_len = 16 * 4096;
     var file_buffer: [read_buf_len]u8 = undefined;
-    var file_writer = file.writer(&file_buffer);
+    var file_writer = file.writer(init.io, &file_buffer);
     const file_interface = &file_writer.interface;
     defer {
         file_interface.flush() catch {};
@@ -137,7 +136,7 @@ pub fn main() !void {
     const max_errors = 10;
     var errors: i16 = 0;
     var read_bytes: usize = 0;
-    var progress = std.Progress.start(.{ .root_name = "%", .estimated_total_items = 100 });
+    var progress = std.Progress.start(init.io, .{ .root_name = "%", .estimated_total_items = 100 });
     defer progress.end();
     var bytes_progress = progress.start("bytes", @intCast(content_size_bytes));
     defer bytes_progress.end();
