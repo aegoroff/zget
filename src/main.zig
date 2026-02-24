@@ -142,11 +142,14 @@ pub fn main(init: std.process.Init) !void {
     defer bytes_progress.end();
     var speed_progress = progress.start(mibs_per_sec, 0);
     defer speed_progress.end();
-    var timer = try std.time.Timer.start();
+    const start = std.Io.Clock.real.now(init.io);
     defer {
-        const elapsed = timer.read();
-        stdout.print("Time taken: {D:0}\n", .{elapsed}) catch {};
-        const speed = read_bytes / seconds(elapsed); // bytes/sec
+        const end = std.Io.Clock.real.now(init.io);
+        const duration = start.durationTo(end);
+        const elapsed: usize = @intCast(duration.toMilliseconds());
+        const nanos: u64 = @intCast(duration.nanoseconds);
+        stdout.print("Time taken: {D:0}\n", .{nanos}) catch {};
+        const speed = (read_bytes / elapsed) * std.time.ms_per_s; // bytes/sec
         stdout.print("Read: {0} bytes\n", .{read_bytes}) catch {};
         stdout.print("Speed: {0Bi:.2}/sec\n", .{speed}) catch {};
     }
@@ -169,7 +172,10 @@ pub fn main(init: std.process.Init) !void {
             }
         };
         read_bytes += read;
-        const elapsed = seconds(timer.read());
+        const end = std.Io.Clock.real.now(init.io);
+        const duration = start.durationTo(end);
+        const elapsed: usize = @intCast(duration.toSeconds());
+
         if (elapsed > 0) {
             const kbytes = read_bytes / 1024;
             var speed = (kbytes / 1024) / elapsed; // MiB/sec
@@ -197,10 +203,6 @@ const ZgetError = error{ ResultFileNotSet, HttpError };
 fn percent(comptime T: type, completed: T, total: T) usize {
     const v = div(T, completed, total);
     return @intFromFloat(v * 100);
-}
-
-fn seconds(nanoseconds: u64) u64 {
-    return nanoseconds / 1000000000;
 }
 
 fn div(comptime T: type, completed: T, total: T) f32 {
