@@ -147,8 +147,11 @@ pub fn main(init: std.process.Init) !void {
         const end = std.Io.Clock.real.now(init.io);
         const duration = start.durationTo(end);
         const nanos: u64 = @intCast(duration.nanoseconds);
-        const micros: usize = @divTrunc(nanos, 1000);
+        var micros: usize = @divTrunc(nanos, 1000);
         stdout.print("Time taken: {D:0}\n", .{nanos}) catch {};
+        if (micros == 0) {
+            micros = 1;
+        }
         const speed = (read_bytes / micros) * std.time.ms_per_s * 1000; // bytes/sec
         stdout.print("Read: {0} bytes\n", .{read_bytes}) catch {};
         stdout.print("Speed: {0Bi:.2}/sec\n", .{speed}) catch {};
