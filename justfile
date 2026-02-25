@@ -1,4 +1,4 @@
-optimize  := "ReleaseFast"
+optimize  := "Debug"
 target := "x86_64-linux-musl"
 cpu := "core2"
 
