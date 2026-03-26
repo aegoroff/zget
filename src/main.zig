@@ -148,7 +148,9 @@ pub fn main(init: std.process.Init) !void {
         const duration = start.durationTo(end);
         const nanos: u64 = @intCast(duration.nanoseconds);
         var micros: usize = @divTrunc(nanos, 1000);
-        stdout.print("Time taken: {D:0}\n", .{nanos}) catch {};
+        stdout.print("Time taken: ", .{}) catch {};
+        duration.format(stdout) catch {};
+        stdout.print("\n", .{}) catch {};
         if (micros == 0) {
             micros = 1;
         }
