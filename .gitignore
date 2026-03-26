@@ -2,4 +2,5 @@ zig-out/
 zig-cache/
 zig-pkg/
 .zig-cache/
+.idea/
 .DS_Store
