@@ -16,7 +16,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) Transport {
 }
 
 pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8) http.Client.RequestError!http.Client.Request {
-    var req_options: std.http.Client.RequestOptions = undefined;
+    var req_options: std.http.Client.RequestOptions = .{};
     if (headers.len > 0) {
         var extra_headers = std.ArrayList(std.http.Header).empty;
         for (headers) |s| {

@@ -6,6 +6,7 @@ const transport = @import("transport.zig");
 const http = std.http;
 
 pub fn main(init: std.process.Init) !void {
+    const gpa = init.arena.allocator();
     var stdout_buffer: [1024]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
@@ -13,8 +14,6 @@ pub fn main(init: std.process.Init) !void {
         stdout.flush() catch {};
     }
 
-    var arena = init.arena;
-    defer arena.deinit();
     const query = std.Target.Query.fromTarget(&builtin.target);
 
     const app_descr_template =
@@ -22,12 +21,12 @@ pub fn main(init: std.process.Init) !void {
         \\Copyright (C) 2025-2026 Alexander Egorov. All rights reserved.
     ;
     const app_descr = try std.fmt.allocPrint(
-        arena.allocator(),
+        gpa,
         app_descr_template,
         .{ build_options.version, @tagName(query.cpu_arch.?) },
     );
 
-    var app = yazap.App.init(arena.allocator(), "zget", app_descr);
+    var app = yazap.App.init(gpa, "zget", app_descr);
     defer app.deinit();
 
     var root_cmd = app.rootCommand();
@@ -64,7 +63,7 @@ pub fn main(init: std.process.Init) !void {
     // Calculate target file path
     var target = matches.getSingleValue("output") orelse file_name;
 
-    var optional_d: ?std.Io.Dir = undefined;
+    var optional_d: ?std.Io.Dir = null;
     if (std.fs.path.isAbsolute(target)) {
         optional_d = std.Io.Dir.openDirAbsolute(init.io, target, .{}) catch null;
     } else {
@@ -72,7 +71,7 @@ pub fn main(init: std.process.Init) !void {
     }
     if (optional_d != null) {
         optional_d.?.close(init.io);
-        target = try std.fs.path.join(arena.allocator(), &[_][]const u8{ target, file_name });
+        target = try std.fs.path.join(gpa, &[_][]const u8{ target, file_name });
     }
 
     if (target.len == 0) {
@@ -82,7 +81,7 @@ pub fn main(init: std.process.Init) !void {
     }
     // Calculate target file path completed
 
-    var client = transport.Transport.init(arena.allocator(), init.io);
+    var client = transport.Transport.init(gpa, init.io);
 
     const headers = matches.getMultiValues("header") orelse &[_][]const u8{};
     var req = try client.get(uri, headers);
@@ -91,7 +90,7 @@ pub fn main(init: std.process.Init) !void {
 
     try req.sendBodiless();
 
-    var header_buffer = try std.ArrayList(u8).initCapacity(arena.allocator(), 65536);
+    var header_buffer = try std.ArrayList(u8).initCapacity(gpa, 65536);
     header_buffer.expandToCapacity();
     var response = try req.receiveHead(header_buffer.items);
 
@@ -131,7 +130,7 @@ pub fn main(init: std.process.Init) !void {
     const kibs_per_sec: []const u8 = "KiB/sec";
     const bytes_per_sec: []const u8 = "bytes/sec";
 
-    const read_buf = try arena.allocator().alloc(u8, read_buf_len);
+    const read_buf = try gpa.alloc(u8, read_buf_len);
     const max_errors = 10;
     var errors: i16 = 0;
     var read_bytes: usize = 0;
