@@ -152,7 +152,7 @@ pub fn main(init: std.process.Init) !void {
         if (micros == 0) {
             micros = 1;
         }
-        const speed = (read_bytes / micros) * std.time.ms_per_s * 1000; // bytes/sec
+        const speed = read_bytes * std.time.ms_per_s * 1000 / micros; // bytes/sec
         stdout.print("Read: {0} bytes\n", .{read_bytes}) catch {};
         stdout.print("Speed: {0Bi:.2}/sec\n", .{speed}) catch {};
     }
@@ -180,10 +180,9 @@ pub fn main(init: std.process.Init) !void {
         const elapsed: usize = @intCast(duration.toSeconds());
 
         if (elapsed > 0) {
-            const kbytes = read_bytes / 1024;
-            var speed = (kbytes / 1024) / elapsed; // MiB/sec
+            var speed = read_bytes / (1024 * 1024) / elapsed; // MiB/sec
             if (speed == 0) {
-                speed = kbytes / elapsed; // KiB/sec
+                speed = read_bytes / 1024 / elapsed; // KiB/sec
                 if (speed == 0) {
                     speed = read_bytes / elapsed; // bytes/sec
                     speed_progress.setName(bytes_per_sec);
