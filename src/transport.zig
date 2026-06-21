@@ -19,6 +19,7 @@ pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8) http.Cli
     var req_options: std.http.Client.RequestOptions = .{};
     if (headers.len > 0) {
         var extra_headers = std.ArrayList(std.http.Header).empty;
+        defer extra_headers.deinit(self.gpa);
         for (headers) |s| {
             var pair = std.mem.splitScalar(u8, s, ':');
             const h = trim(pair.next());
