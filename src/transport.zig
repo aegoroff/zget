@@ -26,6 +26,8 @@ pub fn deinit(self: *Transport) void {
 }
 
 pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8) http.Client.RequestError!http.Client.Request {
+    try ensureTlsReady(&self.http_client);
+
     self.extra_headers.clearRetainingCapacity();
     for (headers) |s| {
         if (parseHeader(s)) |header| {
@@ -37,6 +39,29 @@ pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8) http.Cli
         .redirect_behavior = DEFAULT_REDIRECT_BEHAVIOR,
         .extra_headers = self.extra_headers.items,
     });
+}
+
+fn ensureTlsReady(client: *http.Client) !void {
+    if (http.Client.disable_tls) return;
+
+    const io = client.io;
+    {
+        try client.ca_bundle_lock.lockShared(io);
+        defer client.ca_bundle_lock.unlockShared(io);
+        if (client.now != null) return;
+    }
+
+    var bundle: std.crypto.Certificate.Bundle = .empty;
+    defer bundle.deinit(client.allocator);
+    const now = std.Io.Clock.real.now(io);
+    bundle.rescan(client.allocator, io, now) catch |err| switch (err) {
+        error.Canceled => |e| return e,
+        else => return error.CertificateBundleLoadFailure,
+    };
+    try client.ca_bundle_lock.lock(io);
+    defer client.ca_bundle_lock.unlock(io);
+    client.now = now;
+    std.mem.swap(std.crypto.Certificate.Bundle, &client.ca_bundle, &bundle);
 }
 
 fn parseHeader(raw: []const u8) ?http.Header {
