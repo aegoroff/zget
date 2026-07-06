@@ -17,7 +17,11 @@ Instructions for AI coding agents working in the **zget** repository.
 
 ```
 src/
-  main.zig        # CLI entry, download loop, progress UI, unit tests
+  main.zig        # Entry point: orchestrates parse → download
+  cli.zig         # yazap CLI setup and argument parsing
+  download.zig    # Output path, file I/O, response body streaming
+  progress.zig    # Progress bar, speed display, summary stats
+  errors.zig      # Project-local error set (ZgetError)
   transport.zig   # HTTP client wrapper (GET, headers, redirects)
 build.zig         # Build, test, run, archive steps
 build.zig.zon     # Package manifest and yazap dependency
@@ -68,13 +72,21 @@ Binary output: `zig-out/bin/zget` (or custom prefix from `--prefix-exe-dir`).
 
 ```
 main.zig
-  ├── yazap: parse CLI (-H, -O, URI positional)
-  ├── resolve output path (file vs directory)
-  ├── transport.Transport.get() → sendBodiless() → receiveHead()
-  └── stream response body to file with std.Progress + speed stats
+  ├── cli.parse()              → URI, headers, -O
+  ├── download.resolvePath()   → file vs directory
+  ├── transport.get()          → sendBodiless() → receiveHead()
+  └── download.streamToFile()  → progress.Tracker
 ```
 
-**`transport.zig`** owns the HTTP client lifecycle. Keep network concerns here; keep `main.zig` focused on CLI orchestration and I/O.
+| Module | Responsibility |
+|--------|----------------|
+| `cli.zig` | yazap app setup, `-H` / `-O` / URI positional |
+| `download.zig` | Resolve target path, create file, stream body with retry |
+| `transport.zig` | HTTP client lifecycle (GET, headers, redirects) |
+| `progress.zig` | `std.Progress` UI, speed, final summary |
+| `errors.zig` | `ZgetError` (`ResultFileNotSet`, `HttpError`) |
+
+Keep network concerns in `transport.zig`; keep `main.zig` as thin orchestration only.
 
 Key behaviors to preserve when changing code:
 
@@ -87,9 +99,9 @@ Key behaviors to preserve when changing code:
 ## Zig conventions for this repo
 
 - **Minimize scope.** Small, focused diffs. No drive-by refactors.
-- **Match existing style.** Follow patterns in `src/main.zig` and `src/transport.zig` for naming, error handling, and allocator use.
+- **Match existing style.** Follow patterns in existing `src/*.zig` modules for naming, error handling, and allocator use.
 - **Use std library first.** HTTP goes through `std.http.Client`; avoid adding dependencies without discussion.
-- **Errors.** Project-local errors are grouped (e.g. `ZgetError`). Propagate with `try`; use `catch` only where recovery is intentional (see the read-loop retry logic in `main.zig`).
+- **Errors.** Project-local errors live in `errors.zig` (`ZgetError`). Propagate with `try`; use `catch` only where recovery is intentional (see the read-loop retry logic in `download.zig`).
 - **I/O.** This codebase uses Zig 0.16 `std.Io` APIs (`init.io`, `std.Io.File`, `std.Io.Dir`, `std.Io.Clock`). Do not revert to pre-0.16 file APIs.
 - **Comments.** Only for non-obvious logic; the code should read clearly on its own.
 - **Tests.** Add `test` blocks in the same file as the code under test. Run `zig build test` before finishing.

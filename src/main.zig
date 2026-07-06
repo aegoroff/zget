@@ -1,7 +1,7 @@
 const std = @import("std");
-const yazap = @import("yazap");
-const builtin = @import("builtin");
-const build_options = @import("build_options");
+const cli = @import("cli.zig");
+const download = @import("download.zig");
+const errors = @import("errors.zig");
 const transport = @import("transport.zig");
 const http = std.http;
 
@@ -14,78 +14,14 @@ pub fn main(init: std.process.Init) !void {
         stdout.flush() catch {};
     }
 
-    const query = std.Target.Query.fromTarget(&builtin.target);
+    const args = try cli.parse(init, gpa);
 
-    const app_descr_template =
-        \\Zget {s} ({s}), a non-interactive network retriever implemented in Zig
-        \\Copyright (C) 2025-2026 Alexander Egorov. All rights reserved.
-    ;
-    const app_descr = try std.fmt.allocPrint(
-        gpa,
-        app_descr_template,
-        .{ build_options.version, @tagName(query.cpu_arch.?) },
-    );
+    try stdout.print("URI: {s}\n", .{args.uri_source});
 
-    var app = yazap.App.init(gpa, "zget", app_descr);
-    defer app.deinit();
-
-    var root_cmd = app.rootCommand();
-    root_cmd.setProperty(.help_on_empty_args);
-    root_cmd.setProperty(.positional_arg_required);
-    const headers_opt = yazap.Arg.multiValuesOption(
-        "header",
-        'H',
-        "Additional HTTP header(s)",
-        1,
-    );
-    const uri_opt = yazap.Arg.positional("URI", "Uri to download", null);
-
-    var output_opt = yazap.Arg.singleValueOption(
-        "output",
-        'O',
-        "Path the result will saved to. If it's a directory file name will be get from URI file name part",
-    );
-    output_opt.setValuePlaceholder("STRING");
-    output_opt.setProperty(.takes_value);
-
-    try root_cmd.addArg(headers_opt);
-    try root_cmd.addArg(output_opt);
-    try root_cmd.addArg(uri_opt);
-
-    const matches = try app.parseProcess(init.io, init.minimal.args);
-
-    const source = matches.getSingleValue("URI");
-
-    try stdout.print("URI: {s}\n", .{source.?});
-    const uri = try std.Uri.parse(source.?);
-
-    const file_name = std.fs.path.basename(uri.path.percent_encoded);
-    // Calculate target file path
-    var target = matches.getSingleValue("output") orelse file_name;
-
-    var optional_d: ?std.Io.Dir = null;
-    if (std.fs.path.isAbsolute(target)) {
-        optional_d = std.Io.Dir.openDirAbsolute(init.io, target, .{}) catch null;
-    } else {
-        optional_d = std.Io.Dir.cwd().openDir(init.io, target, .{}) catch null;
-    }
-    if (optional_d != null) {
-        optional_d.?.close(init.io);
-        target = try std.fs.path.join(gpa, &[_][]const u8{ target, file_name });
-    }
-
-    if (target.len == 0) {
-        // if no file name from URI and nothing set using cli option
-        // treat this as error
-        return ZgetError.ResultFileNotSet;
-    }
-    // Calculate target file path completed
+    const target = try download.resolvePath(gpa, init.io, args.output, args.uri);
 
     var client = transport.Transport.init(gpa, init.io);
-
-    const headers = matches.getMultiValues("header") orelse &[_][]const u8{};
-    var req = try client.get(uri, headers);
-
+    var req = try client.get(args.uri, args.headers);
     defer req.deinit();
 
     try req.sendBodiless();
@@ -99,7 +35,7 @@ pub fn main(init: std.process.Init) !void {
 
     if (response.head.status != http.Status.ok) {
         try stdout.print("Http response: {d}\n", .{@intFromEnum(response.head.status)});
-        return ZgetError.HttpError;
+        return errors.ZgetError.HttpError;
     }
 
     const content_size_bytes = response.head.content_length orelse 0;
@@ -107,145 +43,24 @@ pub fn main(init: std.process.Init) !void {
         try stdout.print("Content-size: {0Bi:.2} ({0} bytes)\n", .{content_size_bytes});
     }
 
-    const file_options = std.Io.File.CreateFlags{ .read = false };
-    var file: std.Io.File = undefined;
-    if (std.mem.eql(u8, target, file_name)) {
-        file = try std.Io.Dir.cwd().createFile(init.io, file_name, file_options);
-    } else if (std.fs.path.isAbsolute(target)) {
-        file = try std.Io.Dir.createFileAbsolute(init.io, target, file_options);
-    } else {
-        file = try std.Io.Dir.cwd().createFile(init.io, target, file_options);
-    }
+    var file = try download.createFile(init.io, target);
     defer file.close(init.io);
 
-    const read_buf_len = 16 * 4096;
-    var file_buffer: [read_buf_len]u8 = undefined;
-    var file_writer = file.writer(init.io, &file_buffer);
-    const file_interface = &file_writer.interface;
-    defer {
-        file_interface.flush() catch {};
-    }
-
-    const mibs_per_sec: []const u8 = "MiB/sec";
-    const kibs_per_sec: []const u8 = "KiB/sec";
-    const bytes_per_sec: []const u8 = "bytes/sec";
-
-    const read_buf = try gpa.alloc(u8, read_buf_len);
-    const max_errors = 10;
-    var errors: i16 = 0;
-    var read_bytes: usize = 0;
-    var progress = std.Progress.start(init.io, .{ .root_name = "%", .estimated_total_items = 100 });
-    defer progress.end();
-    var bytes_progress = progress.start("bytes", @intCast(content_size_bytes));
-    defer bytes_progress.end();
-    var speed_progress = progress.start(mibs_per_sec, 0);
-    defer speed_progress.end();
-    const start = std.Io.Clock.real.now(init.io);
-    defer {
-        const end = std.Io.Clock.real.now(init.io);
-        const duration = start.durationTo(end);
-        const nanos: u64 = @intCast(duration.nanoseconds);
-        var micros: usize = @divTrunc(nanos, 1000);
-        stdout.print("Time taken: ", .{}) catch {};
-        duration.format(stdout) catch {};
-        stdout.print("\n", .{}) catch {};
-        if (micros == 0) {
-            micros = 1;
-        }
-        const speed = read_bytes * std.time.ms_per_s * 1000 / micros; // bytes/sec
-        stdout.print("Read: {0} bytes\n", .{read_bytes}) catch {};
-        stdout.print("Speed: {0Bi:.2}/sec\n", .{speed}) catch {};
-    }
-    var reader = response.reader(read_buf);
-    while (true) {
-        const read = reader.stream(file_interface, .limited(read_buf_len)) catch |err| {
-            switch (err) {
-                error.EndOfStream => {
-                    break;
-                },
-                else => |e| {
-                    try stdout.print("Error: {}\n", .{e});
-                    if (errors < max_errors) {
-                        errors += 1;
-                        continue;
-                    } else {
-                        break;
-                    }
-                },
-            }
-        };
-        read_bytes += read;
-        const end = std.Io.Clock.real.now(init.io);
-        const duration = start.durationTo(end);
-        const elapsed: usize = @intCast(duration.toSeconds());
-
-        if (elapsed > 0) {
-            var speed = read_bytes / (1024 * 1024) / elapsed; // MiB/sec
-            if (speed == 0) {
-                speed = read_bytes / 1024 / elapsed; // KiB/sec
-                if (speed == 0) {
-                    speed = read_bytes / elapsed; // bytes/sec
-                    speed_progress.setName(bytes_per_sec);
-                } else {
-                    speed_progress.setName(kibs_per_sec);
-                }
-            } else {
-                speed_progress.setName(mibs_per_sec);
-            }
-            speed_progress.setCompletedItems(@intCast(speed));
-        }
-
-        progress.setCompletedItems(percent(usize, read_bytes, @intCast(content_size_bytes)));
-        bytes_progress.setCompletedItems(read_bytes);
-    }
-}
-
-const ZgetError = error{ ResultFileNotSet, HttpError };
-
-fn percent(comptime T: type, completed: T, total: T) usize {
-    const v = div(T, completed, total);
-    return @intFromFloat(v * 100);
-}
-
-fn div(comptime T: type, completed: T, total: T) f32 {
-    const x = @as(f32, @floatFromInt(completed));
-    const y = @as(f32, @floatFromInt(total));
-    if (y == 0) {
-        return 0;
-    }
-    return x / y;
-}
-
-test "percent 0" {
-    const expected: usize = 0;
-    try std.testing.expectEqual(expected, percent(usize, 10, 0));
-}
-
-test "percent 1" {
-    const expected: usize = 1;
-    try std.testing.expectEqual(expected, percent(usize, 10, 1000));
-}
-
-test "percent 10" {
-    const expected: usize = 10;
-    try std.testing.expectEqual(expected, percent(usize, 100, 1000));
-}
-
-test "percent 25" {
-    const expected: usize = 25;
-    try std.testing.expectEqual(expected, percent(usize, 250, 1000));
-}
-
-test "percent 70" {
-    const expected: usize = 70;
-    try std.testing.expectEqual(expected, percent(usize, 700, 1000));
-}
-
-test "percent 70 (int)" {
-    const expected: i32 = 70;
-    try std.testing.expectEqual(expected, percent(i32, 700, 1000));
+    try download.streamToFile(
+        init.io,
+        gpa,
+        stdout,
+        &response,
+        &file,
+        content_size_bytes,
+    );
 }
 
 test {
     @import("std").testing.refAllDecls(@This());
+    _ = @import("cli.zig");
+    _ = @import("download.zig");
+    _ = @import("errors.zig");
+    _ = @import("progress.zig");
+    _ = @import("transport.zig");
 }
