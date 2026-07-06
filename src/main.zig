@@ -21,6 +21,7 @@ pub fn main(init: std.process.Init) !void {
     const target = try download.resolvePath(gpa, init.io, args.output, args.uri);
 
     var client = transport.Transport.init(gpa, init.io);
+    defer client.deinit();
     var req = try client.get(args.uri, args.headers);
     defer req.deinit();
 

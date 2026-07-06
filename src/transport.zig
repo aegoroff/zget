@@ -2,8 +2,12 @@ pub const Transport = @This();
 const std = @import("std");
 const http = std.http;
 
+const MAX_REDIRECTS = 10;
+const DEFAULT_REDIRECT_BEHAVIOR = http.Client.Request.RedirectBehavior.init(MAX_REDIRECTS);
+
 gpa: std.mem.Allocator,
 http_client: std.http.Client,
+extra_headers: std.ArrayList(http.Header),
 
 pub fn init(gpa: std.mem.Allocator, io: std.Io) Transport {
     return Transport{
@@ -12,51 +16,59 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) Transport {
             .allocator = gpa,
             .io = io,
         },
+        .extra_headers = .empty,
     };
+}
+
+pub fn deinit(self: *Transport) void {
+    self.extra_headers.deinit(self.gpa);
+    self.http_client.deinit();
 }
 
 pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8) http.Client.RequestError!http.Client.Request {
-    var req_options: std.http.Client.RequestOptions = .{
-        .redirect_behavior = @enumFromInt(10),
-    };
-    if (headers.len > 0) {
-        var extra_headers = std.ArrayList(std.http.Header).empty;
-        defer extra_headers.deinit(self.gpa);
-        for (headers) |s| {
-            var pair = std.mem.splitScalar(u8, s, ':');
-            const h = trim(pair.next());
-            const v = trim(pair.next());
-            if (h != null and v != null) {
-                try extra_headers.append(self.gpa, .{ .name = h.?, .value = v.? });
-            }
+    self.extra_headers.clearRetainingCapacity();
+    for (headers) |s| {
+        if (parseHeader(s)) |header| {
+            try self.extra_headers.append(self.gpa, header);
         }
-        req_options = .{
-            .extra_headers = extra_headers.items,
-        };
-    } else {
-        req_options = .{};
     }
 
-    return self.http_client.request(.GET, uri, req_options);
+    return self.http_client.request(.GET, uri, .{
+        .redirect_behavior = DEFAULT_REDIRECT_BEHAVIOR,
+        .extra_headers = self.extra_headers.items,
+    });
 }
 
-fn trim(s: ?[]const u8) ?[]const u8 {
-    const slice = s orelse {
-        return s;
-    };
-    return std.mem.trim(u8, slice, " ");
+fn parseHeader(raw: []const u8) ?http.Header {
+    const colon = std.mem.indexOfScalar(u8, raw, ':') orelse return null;
+    const name = std.mem.trim(u8, raw[0..colon], " ");
+    const value = std.mem.trim(u8, raw[colon + 1 ..], " ");
+    if (name.len == 0 or value.len == 0) return null;
+    return .{ .name = name, .value = value };
 }
 
-test "trim not needed" {
-    const i: ?[]const u8 = "1234";
-    try std.testing.expectEqualStrings("1234", trim(i) orelse "");
+test "parseHeader simple" {
+    const header = parseHeader("User-Agent: zget/1.0").?;
+    try std.testing.expectEqualStrings("User-Agent", header.name);
+    try std.testing.expectEqualStrings("zget/1.0", header.value);
 }
 
-test "trim null" {
-    try std.testing.expectEqual(@as(?[]const u8, null), trim(null));
+test "parseHeader trims whitespace" {
+    const header = parseHeader("  Authorization :  Bearer token  ").?;
+    try std.testing.expectEqualStrings("Authorization", header.name);
+    try std.testing.expectEqualStrings("Bearer token", header.value);
 }
 
-test "trim null with whitespaces" {
-    const i: ?[]const u8 = " 1234 ";
-    try std.testing.expectEqualStrings("1234", trim(i) orelse "");
+test "parseHeader value with colon" {
+    const header = parseHeader("Authorization: Bearer xxx:yyy").?;
+    try std.testing.expectEqualStrings("Authorization", header.name);
+    try std.testing.expectEqualStrings("Bearer xxx:yyy", header.value);
+}
+
+test "parseHeader missing colon" {
+    try std.testing.expect(parseHeader("NoColonHere") == null);
+}
+
+test "parseHeader empty value" {
+    try std.testing.expect(parseHeader("Header-Name:") == null);
 }
