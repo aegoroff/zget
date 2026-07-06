@@ -2,6 +2,7 @@ const std = @import("std");
 const cli = @import("cli.zig");
 const download = @import("download.zig");
 const errors = @import("errors.zig");
+const proxy = @import("proxy.zig");
 const transport = @import("transport.zig");
 const http = std.http;
 
@@ -20,7 +21,8 @@ pub fn main(init: std.process.Init) !void {
 
     const target = try download.resolvePath(gpa, init.io, args.output, args.uri);
 
-    var client = transport.Transport.init(gpa, init.io);
+    const proxy_config = try proxy.load(gpa, init.environ_map, args.proxy);
+    var client = transport.Transport.init(gpa, init.io, proxy_config);
     defer client.deinit();
     var req = try client.get(args.uri, args.headers);
     defer req.deinit();
@@ -63,5 +65,6 @@ test {
     _ = @import("download.zig");
     _ = @import("errors.zig");
     _ = @import("progress.zig");
+    _ = @import("proxy.zig");
     _ = @import("transport.zig");
 }

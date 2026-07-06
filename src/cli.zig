@@ -3,11 +3,14 @@ const yazap = @import("yazap");
 const builtin = @import("builtin");
 const build_options = @import("build_options");
 
+const proxy = @import("proxy.zig");
+
 pub const Args = struct {
     uri_source: []const u8,
     uri: std.Uri,
     headers: []const []const u8,
     output: ?[]const u8,
+    proxy: proxy.CliOptions,
 };
 
 pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !Args {
@@ -45,8 +48,27 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !Args {
     output_opt.setValuePlaceholder("STRING");
     output_opt.setProperty(.takes_value);
 
+    const no_proxy_opt = yazap.Arg.booleanOption(
+        "no-proxy",
+        null,
+        "Don't use proxies, even if the appropriate *_proxy environment variable is defined",
+    );
+    const proxy_user_opt = yazap.Arg.singleValueOption(
+        "proxy-user",
+        null,
+        "Username for authentication on a proxy server",
+    );
+    const proxy_password_opt = yazap.Arg.singleValueOption(
+        "proxy-password",
+        null,
+        "Password for authentication on a proxy server",
+    );
+
     try root_cmd.addArg(headers_opt);
     try root_cmd.addArg(output_opt);
+    try root_cmd.addArg(no_proxy_opt);
+    try root_cmd.addArg(proxy_user_opt);
+    try root_cmd.addArg(proxy_password_opt);
     try root_cmd.addArg(uri_opt);
 
     const matches = try app.parseProcess(init.io, init.minimal.args);
@@ -59,5 +81,10 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !Args {
         .uri = uri,
         .headers = matches.getMultiValues("header") orelse &[_][]const u8{},
         .output = matches.getSingleValue("output"),
+        .proxy = .{
+            .no_proxy = matches.containsArg("no-proxy"),
+            .proxy_user = matches.getSingleValue("proxy-user"),
+            .proxy_password = matches.getSingleValue("proxy-password"),
+        },
     };
 }

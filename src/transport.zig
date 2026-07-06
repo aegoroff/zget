@@ -2,6 +2,7 @@ pub const Transport = @This();
 const std = @import("std");
 const http = std.http;
 const build_options = @import("build_options");
+const proxy = @import("proxy.zig");
 
 const MAX_REDIRECTS = 10;
 const DEFAULT_REDIRECT_BEHAVIOR = http.Client.Request.RedirectBehavior.init(MAX_REDIRECTS);
@@ -10,15 +11,20 @@ const DEFAULT_USER_AGENT = std.fmt.comptimePrint("zget/{s}", .{build_options.ver
 gpa: std.mem.Allocator,
 http_client: std.http.Client,
 extra_headers: std.ArrayList(http.Header),
+proxy_config: proxy.Config,
 
-pub fn init(gpa: std.mem.Allocator, io: std.Io) Transport {
+pub fn init(gpa: std.mem.Allocator, io: std.Io, proxy_config: proxy.Config) Transport {
+    var http_client = std.http.Client{
+        .allocator = gpa,
+        .io = io,
+    };
+    proxy.apply(&proxy_config, &http_client);
+
     return Transport{
         .gpa = gpa,
-        .http_client = std.http.Client{
-            .allocator = gpa,
-            .io = io,
-        },
+        .http_client = http_client,
         .extra_headers = .empty,
+        .proxy_config = proxy_config,
     };
 }
 
@@ -29,6 +35,14 @@ pub fn deinit(self: *Transport) void {
 
 pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8) http.Client.RequestError!http.Client.Request {
     try ensureTlsReady(&self.http_client);
+
+    const host = try uri.getHostAlloc(self.gpa);
+    if (proxy.shouldBypassProxy(&self.proxy_config, host.bytes)) {
+        self.http_client.http_proxy = null;
+        self.http_client.https_proxy = null;
+    } else {
+        proxy.apply(&self.proxy_config, &self.http_client);
+    }
 
     self.extra_headers.clearRetainingCapacity();
     var user_agent: http.Client.Request.Headers.Value = .{ .override = DEFAULT_USER_AGENT };
