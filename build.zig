@@ -1,7 +1,15 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
+    // Pin glibc on the default Linux-gnu target so Zig links against its
+    // bundled CRT instead of the system crt1.o. GCC >= 15 emits a .sframe
+    // section there that Zig 0.16's linker cannot handle.
+    const target = b.standardTargetOptions(.{
+        .default_target = .{
+            .abi = .gnu,
+            .glibc_version = .{ .major = 2, .minor = 38, .patch = 0 },
+        },
+    });
     const optimize = b.standardOptimizeOption(.{});
     const strip = optimize != .Debug;
     const options = b.addOptions();
