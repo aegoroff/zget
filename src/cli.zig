@@ -43,7 +43,7 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !Args {
     var output_opt = yazap.Arg.singleValueOption(
         "output",
         'O',
-        "Path the result will saved to. If it's a directory file name will be get from URI file name part",
+        "Path the result will saved to. If it's a directory file name will be get from URI file name part. Use '-' to write to stdout",
     );
     output_opt.setValuePlaceholder("STRING");
     output_opt.setProperty(.takes_value);
@@ -71,7 +71,9 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !Args {
     try root_cmd.addArg(proxy_password_opt);
     try root_cmd.addArg(uri_opt);
 
-    const matches = try app.parseProcess(init.io, init.minimal.args);
+    const raw_argv = try init.minimal.args.toSlice(gpa);
+    const argv = try normalizeOutputDashArgv(gpa, raw_argv[1..]);
+    const matches = try app.parseFrom(init.io, argv);
 
     const source = matches.getSingleValue("URI").?;
     const uri = try std.Uri.parse(source);
@@ -87,4 +89,52 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !Args {
             .proxy_password = matches.getSingleValue("proxy-password"),
         },
     };
+}
+
+fn isOutputOption(arg: []const u8) bool {
+    return std.mem.eql(u8, arg, "-O") or std.mem.eql(u8, arg, "--output");
+}
+
+/// yazap treats a standalone `-` as an option token; wget uses `-O -` for stdout.
+fn normalizeOutputDashArgv(gpa: std.mem.Allocator, argv: []const [:0]const u8) ![]const [:0]const u8 {
+    if (argv.len == 0) return argv;
+
+    var normalized = try std.ArrayList([:0]const u8).initCapacity(gpa, argv.len);
+    errdefer normalized.deinit(gpa);
+
+    var index: usize = 0;
+    while (index < argv.len) : (index += 1) {
+        const arg = argv[index];
+        if (isOutputOption(arg) and index + 1 < argv.len and std.mem.eql(u8, argv[index + 1], "-")) {
+            const merged = try std.fmt.allocPrintSentinel(gpa, "{s}=-", .{arg}, 0);
+            try normalized.append(gpa, merged);
+            index += 1;
+            continue;
+        }
+        try normalized.append(gpa, arg);
+    }
+
+    return try normalized.toOwnedSlice(gpa);
+}
+
+test "normalizeOutputDashArgv rewrites -O -" {
+    const argv = [_][:0]const u8{ "-O", "-", "https://example.com" };
+    const normalized = try normalizeOutputDashArgv(std.testing.allocator, &argv);
+    try std.testing.expectEqual(@as(usize, 2), normalized.len);
+    try std.testing.expectEqualStrings("-O=-", normalized[0]);
+    try std.testing.expectEqualStrings("https://example.com", normalized[1]);
+}
+
+test "normalizeOutputDashArgv rewrites --output -" {
+    const argv = [_][:0]const u8{ "--output", "-", "https://example.com" };
+    const normalized = try normalizeOutputDashArgv(std.testing.allocator, &argv);
+    try std.testing.expectEqual(@as(usize, 2), normalized.len);
+    try std.testing.expectEqualStrings("--output=-", normalized[0]);
+    try std.testing.expectEqualStrings("https://example.com", normalized[1]);
+}
+
+test "normalizeOutputDashArgv leaves other args unchanged" {
+    const argv = [_][:0]const u8{ "-O", "out.txt", "https://example.com" };
+    const normalized = try normalizeOutputDashArgv(std.testing.allocator, &argv);
+    try std.testing.expectEqualSlices([:0]const u8, &argv, normalized);
 }

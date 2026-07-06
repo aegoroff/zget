@@ -5,6 +5,25 @@ const progress = @import("progress.zig");
 const READ_BUF_LEN = 16 * 4096;
 const MAX_ERRORS: i16 = 10;
 
+pub const OutputTarget = union(enum) {
+    stdout,
+    file: []const u8,
+};
+
+pub fn resolveOutput(
+    gpa: std.mem.Allocator,
+    io: std.Io,
+    output_opt: ?[]const u8,
+    uri: std.Uri,
+) !OutputTarget {
+    if (output_opt) |output| {
+        if (std.mem.eql(u8, output, "-")) return .stdout;
+    }
+
+    const path = try resolvePath(gpa, io, output_opt, uri);
+    return .{ .file = path };
+}
+
 pub fn resolvePath(
     gpa: std.mem.Allocator,
     io: std.Io,
@@ -40,36 +59,29 @@ pub fn createFile(io: std.Io, path: []const u8) !std.Io.File {
     return std.Io.Dir.cwd().createFile(io, path, file_options);
 }
 
-pub fn streamToFile(
+pub fn streamToWriter(
     io: std.Io,
     gpa: std.mem.Allocator,
-    stdout: *std.Io.Writer,
+    summary: *std.Io.Writer,
     response: *std.http.Client.Response,
-    file: *std.Io.File,
+    dest: *std.Io.Writer,
     content_size_bytes: u64,
 ) !void {
-    var file_buffer: [READ_BUF_LEN]u8 = undefined;
-    var file_writer = file.writer(io, &file_buffer);
-    const file_interface = &file_writer.interface;
-    defer {
-        file_interface.flush() catch {};
-    }
-
     const read_buf = try gpa.alloc(u8, READ_BUF_LEN);
     var tracker = progress.Tracker.start(io, content_size_bytes);
     defer {
-        tracker.printSummary(io, stdout);
+        tracker.printSummary(io, summary);
         tracker.end();
     }
 
     var read_errors: i16 = 0;
     var reader = response.reader(read_buf);
     while (true) {
-        const read = reader.stream(file_interface, .limited(READ_BUF_LEN)) catch |err| {
+        const read = reader.stream(dest, .limited(READ_BUF_LEN)) catch |err| {
             switch (err) {
                 error.EndOfStream => break,
                 else => |e| {
-                    try stdout.print("Error: {}\n", .{e});
+                    try summary.print("Error: {}\n", .{e});
                     if (read_errors < MAX_ERRORS) {
                         read_errors += 1;
                         continue;
@@ -81,4 +93,35 @@ pub fn streamToFile(
         };
         tracker.record(io, read, @intCast(content_size_bytes));
     }
+}
+
+pub fn streamToFile(
+    io: std.Io,
+    gpa: std.mem.Allocator,
+    summary: *std.Io.Writer,
+    response: *std.http.Client.Response,
+    file: *std.Io.File,
+    content_size_bytes: u64,
+) !void {
+    var file_buffer: [READ_BUF_LEN]u8 = undefined;
+    var file_writer = file.writer(io, &file_buffer);
+    const file_interface = &file_writer.interface;
+    defer {
+        file_interface.flush() catch {};
+    }
+
+    try streamToWriter(io, gpa, summary, response, file_interface, content_size_bytes);
+}
+
+test "resolveOutput stdout for -O -" {
+    const uri = try std.Uri.parse("https://example.com/file.txt");
+    const target = try resolveOutput(std.testing.allocator, std.testing.io, "-", uri);
+    try std.testing.expect(target == .stdout);
+}
+
+test "resolveOutput file for explicit path" {
+    const uri = try std.Uri.parse("https://example.com/file.txt");
+    const target = try resolveOutput(std.testing.allocator, std.testing.io, "out.txt", uri);
+    try std.testing.expect(target == .file);
+    try std.testing.expectEqualStrings("out.txt", target.file);
 }

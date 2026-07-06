@@ -15,11 +15,19 @@ pub fn main(init: std.process.Init) !void {
         stdout.flush() catch {};
     }
 
+    var stderr_buffer: [1024]u8 = undefined;
+    var stderr_writer = std.Io.File.stderr().writer(init.io, &stderr_buffer);
+    const stderr = &stderr_writer.interface;
+    defer {
+        stderr.flush() catch {};
+    }
+
     const args = try cli.parse(init, gpa);
 
-    try stdout.print("URI: {s}\n", .{args.uri_source});
+    const output_target = try download.resolveOutput(gpa, init.io, args.output, args.uri);
+    const log = if (output_target == .stdout) stderr else stdout;
 
-    const target = try download.resolvePath(gpa, init.io, args.output, args.uri);
+    try log.print("URI: {s}\n", .{args.uri_source});
 
     const proxy_config = try proxy.load(gpa, init.environ_map, args.proxy);
     var client = transport.Transport.init(gpa, init.io, proxy_config);
@@ -34,29 +42,41 @@ pub fn main(init: std.process.Init) !void {
     var response = try req.receiveHead(header_buffer.items);
 
     const content_type = response.head.content_type orelse "text/plain";
-    try stdout.print("Content-type: {s}\n", .{content_type});
+    try log.print("Content-type: {s}\n", .{content_type});
 
     if (response.head.status != http.Status.ok) {
-        try stdout.print("Http response: {d}\n", .{@intFromEnum(response.head.status)});
+        try log.print("Http response: {d}\n", .{@intFromEnum(response.head.status)});
         return errors.ZgetError.HttpError;
     }
 
     const content_size_bytes = response.head.content_length orelse 0;
     if (content_size_bytes > 0) {
-        try stdout.print("Content-size: {0Bi:.2} ({0} bytes)\n", .{content_size_bytes});
+        try log.print("Content-size: {0Bi:.2} ({0} bytes)\n", .{content_size_bytes});
     }
 
-    var file = try download.createFile(init.io, target);
-    defer file.close(init.io);
+    switch (output_target) {
+        .stdout => try download.streamToWriter(
+            init.io,
+            gpa,
+            stderr,
+            &response,
+            stdout,
+            content_size_bytes,
+        ),
+        .file => |target| {
+            var file = try download.createFile(init.io, target);
+            defer file.close(init.io);
 
-    try download.streamToFile(
-        init.io,
-        gpa,
-        stdout,
-        &response,
-        &file,
-        content_size_bytes,
-    );
+            try download.streamToFile(
+                init.io,
+                gpa,
+                stdout,
+                &response,
+                &file,
+                content_size_bytes,
+            );
+        },
+    }
 }
 
 test {
