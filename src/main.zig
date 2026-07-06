@@ -36,7 +36,7 @@ pub fn main(init: std.process.Init) !void {
         "header",
         'H',
         "Additional HTTP header(s)",
-        512,
+        1,
     );
     const uri_opt = yazap.Arg.positional("URI", "Uri to download", null);
 
