@@ -1,9 +1,11 @@
 pub const Transport = @This();
 const std = @import("std");
 const http = std.http;
+const build_options = @import("build_options");
 
 const MAX_REDIRECTS = 10;
 const DEFAULT_REDIRECT_BEHAVIOR = http.Client.Request.RedirectBehavior.init(MAX_REDIRECTS);
+const DEFAULT_USER_AGENT = std.fmt.comptimePrint("zget/{s}", .{build_options.version});
 
 gpa: std.mem.Allocator,
 http_client: std.http.Client,
@@ -29,8 +31,12 @@ pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8) http.Cli
     try ensureTlsReady(&self.http_client);
 
     self.extra_headers.clearRetainingCapacity();
+    var user_agent: http.Client.Request.Headers.Value = .{ .override = DEFAULT_USER_AGENT };
     for (headers) |s| {
         if (parseHeader(s)) |header| {
+            if (std.ascii.eqlIgnoreCase(header.name, "user-agent")) {
+                user_agent = .omit;
+            }
             try self.extra_headers.append(self.gpa, header);
         }
     }
@@ -38,6 +44,9 @@ pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8) http.Cli
     return self.http_client.request(.GET, uri, .{
         .redirect_behavior = DEFAULT_REDIRECT_BEHAVIOR,
         .extra_headers = self.extra_headers.items,
+        .headers = .{
+            .user_agent = user_agent,
+        },
     });
 }
 
@@ -96,4 +105,8 @@ test "parseHeader missing colon" {
 
 test "parseHeader empty value" {
     try std.testing.expect(parseHeader("Header-Name:") == null);
+}
+
+test "default user agent includes app name and version" {
+    try std.testing.expectEqualStrings("zget/" ++ build_options.version, DEFAULT_USER_AGENT);
 }
