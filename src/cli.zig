@@ -118,23 +118,35 @@ fn normalizeOutputDashArgv(gpa: std.mem.Allocator, argv: []const [:0]const u8) !
 }
 
 test "normalizeOutputDashArgv rewrites -O -" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
     const argv = [_][:0]const u8{ "-O", "-", "https://example.com" };
-    const normalized = try normalizeOutputDashArgv(std.testing.allocator, &argv);
+    const normalized = try normalizeOutputDashArgv(arena, &argv);
     try std.testing.expectEqual(@as(usize, 2), normalized.len);
     try std.testing.expectEqualStrings("-O=-", normalized[0]);
     try std.testing.expectEqualStrings("https://example.com", normalized[1]);
 }
 
 test "normalizeOutputDashArgv rewrites --output -" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
     const argv = [_][:0]const u8{ "--output", "-", "https://example.com" };
-    const normalized = try normalizeOutputDashArgv(std.testing.allocator, &argv);
+    const normalized = try normalizeOutputDashArgv(arena, &argv);
     try std.testing.expectEqual(@as(usize, 2), normalized.len);
     try std.testing.expectEqualStrings("--output=-", normalized[0]);
     try std.testing.expectEqualStrings("https://example.com", normalized[1]);
 }
 
 test "normalizeOutputDashArgv leaves other args unchanged" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
     const argv = [_][:0]const u8{ "-O", "out.txt", "https://example.com" };
-    const normalized = try normalizeOutputDashArgv(std.testing.allocator, &argv);
+    const normalized = try normalizeOutputDashArgv(arena, &argv);
     try std.testing.expectEqualSlices([:0]const u8, &argv, normalized);
 }
