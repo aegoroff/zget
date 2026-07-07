@@ -15,7 +15,7 @@ pub const Config = struct {
 };
 
 pub fn load(
-    arena: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     environ_map: *const std.process.Environ.Map,
     cli: CliOptions,
 ) !Config {
@@ -24,16 +24,16 @@ pub fn load(
     };
     if (!config.use_proxy) return config;
 
-    config.no_proxy_entries = try parseNoProxyList(arena, environ_map.get("no_proxy"));
+    config.no_proxy_entries = try parseNoProxyList(gpa, environ_map.get("no_proxy"));
 
     const proxy_user = cli.proxy_user;
     const proxy_password = cli.proxy_password orelse "";
 
     if (environ_map.get("http_proxy")) |url| {
-        config.http_proxy = try createProxy(arena, url, proxy_user, proxy_password);
+        config.http_proxy = try createProxy(gpa, url, proxy_user, proxy_password);
     }
     if (environ_map.get("https_proxy")) |url| {
-        config.https_proxy = try createProxy(arena, url, proxy_user, proxy_password);
+        config.https_proxy = try createProxy(gpa, url, proxy_user, proxy_password);
     }
 
     return config;
@@ -55,25 +55,25 @@ pub fn shouldBypassProxy(config: *const Config, host: []const u8) bool {
     return hostMatchesNoProxy(host, config.no_proxy_entries);
 }
 
-fn parseNoProxyList(arena: std.mem.Allocator, value: ?[]const u8) ![]const []const u8 {
+fn parseNoProxyList(gpa: std.mem.Allocator, value: ?[]const u8) ![]const []const u8 {
     const raw = value orelse return &.{};
     if (raw.len == 0) return &.{};
 
     var entries = std.ArrayList([]const u8).empty;
-    errdefer entries.deinit(arena);
+    errdefer entries.deinit(gpa);
 
     var parts = std.mem.splitScalar(u8, raw, ',');
     while (parts.next()) |part| {
         const trimmed = std.mem.trim(u8, part, " \t");
         if (trimmed.len == 0) continue;
-        try entries.append(arena, trimmed);
+        try entries.append(gpa, trimmed);
     }
 
-    return try entries.toOwnedSlice(arena);
+    return try entries.toOwnedSlice(gpa);
 }
 
 fn createProxy(
-    arena: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     url: []const u8,
     proxy_user: ?[]const u8,
     proxy_password: []const u8,
@@ -82,17 +82,17 @@ fn createProxy(
 
     const uri = std.Uri.parse(url) catch try std.Uri.parseAfterScheme("http", url);
     const protocol = http.Client.Protocol.fromUri(uri) orelse return error.UnsupportedProxyScheme;
-    const raw_host = try uri.getHostAlloc(arena);
+    const raw_host = try uri.getHostAlloc(gpa);
 
     const authorization = if (proxy_user) |user|
-        try makeBasicAuthorization(arena, user, proxy_password)
+        try makeBasicAuthorization(gpa, user, proxy_password)
     else if (uri.user != null or uri.password != null) a: {
-        const value = try arena.alloc(u8, http.Client.basic_authorization.valueLengthFromUri(uri));
+        const value = try gpa.alloc(u8, http.Client.basic_authorization.valueLengthFromUri(uri));
         assert(http.Client.basic_authorization.value(uri, value).len == value.len);
         break :a value;
     } else null;
 
-    const proxy = try arena.create(http.Client.Proxy);
+    const proxy = try gpa.create(http.Client.Proxy);
     proxy.* = .{
         .protocol = protocol,
         .host = raw_host,
@@ -104,12 +104,12 @@ fn createProxy(
 }
 
 fn makeBasicAuthorization(
-    arena: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     user: []const u8,
     password: []const u8,
 ) ![]const u8 {
     const value_len = http.Client.basic_authorization.valueLength(user.len, password.len);
-    const value = try arena.alloc(u8, value_len);
+    const value = try gpa.alloc(u8, value_len);
 
     var credentials: [http.Client.basic_authorization.max_user_len + 1 + http.Client.basic_authorization.max_password_len]u8 = undefined;
     var credentials_writer = std.Io.Writer.fixed(&credentials);
