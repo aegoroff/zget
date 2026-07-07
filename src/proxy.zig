@@ -12,48 +12,48 @@ pub const Config = struct {
     no_proxy_entries: []const []const u8 = &.{},
     http_proxy: ?*http.Client.Proxy = null,
     https_proxy: ?*http.Client.Proxy = null,
+
+    pub fn init(
+        gpa: std.mem.Allocator,
+        environ_map: *const std.process.Environ.Map,
+        cli: CliOptions,
+    ) !Config {
+        var config: Config = .{
+            .use_proxy = !cli.no_proxy,
+        };
+        if (!config.use_proxy) return config;
+
+        config.no_proxy_entries = try parseNoProxyList(gpa, environ_map.get("no_proxy"));
+
+        const proxy_user = cli.proxy_user;
+        const proxy_password = cli.proxy_password orelse "";
+
+        if (environ_map.get("http_proxy")) |url| {
+            config.http_proxy = try createProxy(gpa, url, proxy_user, proxy_password);
+        }
+        if (environ_map.get("https_proxy")) |url| {
+            config.https_proxy = try createProxy(gpa, url, proxy_user, proxy_password);
+        }
+
+        return config;
+    }
+
+    pub fn apply(self: *const Config, client: *http.Client) void {
+        if (!self.use_proxy) {
+            client.http_proxy = null;
+            client.https_proxy = null;
+            return;
+        }
+
+        client.http_proxy = self.http_proxy;
+        client.https_proxy = self.https_proxy;
+    }
+
+    pub fn shouldBypassProxy(self: *const Config, host: []const u8) bool {
+        if (!self.use_proxy) return true;
+        return hostMatchesNoProxy(host, self.no_proxy_entries);
+    }
 };
-
-pub fn load(
-    gpa: std.mem.Allocator,
-    environ_map: *const std.process.Environ.Map,
-    cli: CliOptions,
-) !Config {
-    var config: Config = .{
-        .use_proxy = !cli.no_proxy,
-    };
-    if (!config.use_proxy) return config;
-
-    config.no_proxy_entries = try parseNoProxyList(gpa, environ_map.get("no_proxy"));
-
-    const proxy_user = cli.proxy_user;
-    const proxy_password = cli.proxy_password orelse "";
-
-    if (environ_map.get("http_proxy")) |url| {
-        config.http_proxy = try createProxy(gpa, url, proxy_user, proxy_password);
-    }
-    if (environ_map.get("https_proxy")) |url| {
-        config.https_proxy = try createProxy(gpa, url, proxy_user, proxy_password);
-    }
-
-    return config;
-}
-
-pub fn apply(config: *const Config, client: *http.Client) void {
-    if (!config.use_proxy) {
-        client.http_proxy = null;
-        client.https_proxy = null;
-        return;
-    }
-
-    client.http_proxy = config.http_proxy;
-    client.https_proxy = config.https_proxy;
-}
-
-pub fn shouldBypassProxy(config: *const Config, host: []const u8) bool {
-    if (!config.use_proxy) return true;
-    return hostMatchesNoProxy(host, config.no_proxy_entries);
-}
 
 fn parseNoProxyList(gpa: std.mem.Allocator, value: ?[]const u8) ![]const []const u8 {
     const raw = value orelse return &.{};
@@ -209,7 +209,7 @@ test "load disables proxy with no-proxy flag" {
     defer map.deinit();
     try map.put("http_proxy", "http://proxy.example:8080");
 
-    const config = try load(arena, &map, .{ .no_proxy = true });
+    const config = try Config.init(arena, &map, .{ .no_proxy = true });
     try std.testing.expect(!config.use_proxy);
     try std.testing.expect(config.http_proxy == null);
 }
@@ -225,7 +225,7 @@ test "load reads http and https proxy from environment" {
     try map.put("http_proxy", "http://proxy.example:8080");
     try map.put("https_proxy", "http://proxy.example:8443");
 
-    const config = try load(arena, &map, .{});
+    const config = try Config.init(arena, &map, .{});
     try std.testing.expect(config.use_proxy);
     try std.testing.expect(config.http_proxy != null);
     try std.testing.expect(config.https_proxy != null);
@@ -243,7 +243,7 @@ test "load applies proxy-user credentials" {
     defer map.deinit();
     try map.put("http_proxy", "http://proxy.example:8080");
 
-    const config = try load(arena, &map, .{
+    const config = try Config.init(arena, &map, .{
         .proxy_user = "alice",
         .proxy_password = "secret",
     });

@@ -18,7 +18,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io, proxy_config: proxy.Config) Tran
         .allocator = gpa,
         .io = io,
     };
-    proxy.apply(&proxy_config, &http_client);
+    proxy_config.apply(&http_client);
 
     return Transport{
         .gpa = gpa,
@@ -37,11 +37,11 @@ pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8) http.Cli
     try ensureTlsReady(&self.http_client);
 
     const host = try uri.getHostAlloc(self.gpa);
-    if (proxy.shouldBypassProxy(&self.proxy_config, host.bytes)) {
+    if (self.proxy_config.shouldBypassProxy(host.bytes)) {
         self.http_client.http_proxy = null;
         self.http_client.https_proxy = null;
     } else {
-        proxy.apply(&self.proxy_config, &self.http_client);
+        self.proxy_config.apply(&self.http_client);
     }
 
     self.extra_headers.clearRetainingCapacity();

@@ -29,7 +29,7 @@ pub fn main(init: std.process.Init) !void {
 
     try log.print("URI: {s}\n", .{args.uri_source});
 
-    const proxy_config = try proxy.load(gpa, init.environ_map, args.proxy);
+    const proxy_config = try proxy.Config.init(gpa, init.environ_map, args.proxy);
     var client = transport.Transport.init(gpa, init.io, proxy_config);
     defer client.deinit();
     var req = try client.get(args.uri, args.headers);
