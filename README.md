@@ -1,125 +1,162 @@
 # zget
 
-A non-interactive network retriever implemented in Zig, similar to `wget` or `curl`.
+A non-interactive network retriever implemented in [Zig](https://ziglang.org/) 0.16.0, similar to `wget` or `curl`.
 
 ## Description
 
-`zget` is a lightweight command-line tool for downloading files from the internet. It provides progress tracking, download speed monitoring, and flexible output options.
+`zget` is a lightweight command-line tool for downloading files over HTTP/HTTPS. It reports progress and speed, supports custom headers and proxies, follows redirects, and writes to a file, a directory, or stdout.
 
 ## Features
 
-- Download files from HTTP/HTTPS URLs
-- Custom HTTP headers support
-- Progress tracking with percentage and bytes downloaded
-- Download speed monitoring (MiB/sec)
-- Flexible output path specification
-- Cross-platform support (Linux, macOS, Windows)
+- HTTP/HTTPS downloads with automatic redirect following (up to 10 hops)
+- Custom HTTP headers (`-H`)
+- Proxy support via environment variables
+- Progress bar with percentage, bytes read, and speed (MiB/sec)
+- Flexible output: file path, directory, or stdout (`-O -`)
+- Default `User-Agent: zget/<version>` header
+- Cross-platform builds (Linux, macOS, Windows)
 
 ## Installation
 
 ### Building from Source
 
-Requires [Zig](https://ziglang.org/) 0.16.0 or later.
+Requires [Zig](https://ziglang.org/) **0.16.0** (see `mise.toml`). [mise](https://mise.jdx.dev/) is the easiest way to install the pinned version:
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/aegoroff/zget.git
 cd zget
 
-# Build the project
+# Install Zig 0.16.0 via mise (optional)
+mise install
+
+# Build
 zig build
 
-# The executable will be in zig-out/bin/zget
+# Binary: zig-out/bin/zget
+```
+
+With [just](https://github.com/casey/just):
+
+```bash
+just build    # ReleaseFast, x86_64-linux-musl
+just test
+```
+
+With mise (used in CI):
+
+```bash
+mise run build:zig
 ```
 
 ### Cross-compilation
 
-The project supports cross-compilation for multiple platforms:
-
 ```bash
-# Build for specific target
 zig build -Dtarget=x86_64-linux-musl
 zig build -Dtarget=aarch64-macos-none
 zig build -Dtarget=x86_64-windows-gnu
 ```
 
-### Creating Release Archives
+### Release Archives
 
 ```bash
-# Build and create a tar.gz archive
-zig build archive
+zig build archive -Dversion=0.2.0
 ```
+
+Produces `zig-out/zget-<version>-<arch>-<os>-<abi>.tar.gz`.
+
+Pre-built archives are attached to [GitHub releases](https://github.com/aegoroff/zget/releases).
 
 ## Usage
 
 ### Basic Usage
 
 ```bash
-# Download a file (saves to current directory with filename from URL)
+# Download to current directory (filename from URL)
 zget https://example.com/file.zip
 
-# Specify output file
+# Write to a specific file
 zget -O output.zip https://example.com/file.zip
 
-# Specify output directory (filename will be extracted from URL)
+# Write into a directory (filename from URL)
 zget -O /path/to/directory https://example.com/file.zip
+
+# Write body to stdout (progress and summary go to stderr)
+zget -O - https://example.com/file.zip
 ```
 
 ### Options
 
-- `-H, --header <HEADER>`: Add custom HTTP header(s). Can be used multiple times.
-  - Format: `Header-Name: Header-Value`
-  - Example: `-H "Authorization: Bearer token123"`
+| Option | Description |
+|--------|-------------|
+| `-H, --header <HEADER>` | Add a custom HTTP header. Repeatable. Format: `Name: Value` |
+| `-O, --output <PATH>` | Output path. Directory appends the URL filename; `-` writes to stdout |
+| `--no-proxy` | Ignore `http_proxy` / `https_proxy` environment variables |
+| `--proxy-user <USER>` | Username for proxy authentication |
+| `--proxy-password <PASS>` | Password for proxy authentication |
 
-- `-O, --output <PATH>`: Specify output path. If it's a directory, the filename will be extracted from the URI.
+Positional argument: `URI` — the URL to download.
+
+### Proxy Configuration
+
+Proxies are read from the environment (unless `--no-proxy` is set):
+
+| Variable | Purpose |
+|----------|---------|
+| `http_proxy` | Proxy for `http://` requests |
+| `https_proxy` | Proxy for `https://` requests |
+| `no_proxy` | Comma-separated host patterns to bypass the proxy |
+
+CLI credentials override embedded credentials in the proxy URL:
+
+```bash
+export http_proxy=http://proxy.example:8080
+export no_proxy=localhost,127.0.0.1,.example.com
+zget --proxy-user alice --proxy-password secret https://example.com/file.zip
+```
 
 ### Examples
 
 ```bash
-# Download with custom headers
-zget -H "User-Agent: MyApp/1.0" -H "Authorization: Bearer token" https://api.example.com/data.json
+# Custom headers
+zget -H "User-Agent: MyApp/1.0" -H "Authorization: Bearer token" \
+  https://api.example.com/data.json
 
-# Download to specific file
+# Named output file
 zget -O myfile.tar.gz https://example.com/release.tar.gz
 
-# Download to directory
-zget -O /tmp/downloads https://example.com/file.zip
+# Pipe to another command
+zget -O - https://example.com/data.json | jq .
 ```
 
 ## Output
 
-`zget` provides detailed information during download:
+During a download, `zget` prints:
 
-- URI being downloaded
+- Request URI
 - Content type
-- Content size (if available)
-- Progress percentage
-- Bytes downloaded
-- Download speed (MiB/sec)
-- Total time taken
-- Final statistics
+- Content size (when the server sends `Content-Length`)
+- Live progress (percentage, bytes read, speed)
+- Final summary: elapsed time, total bytes, average speed
+
+When writing to stdout (`-O -`), the response body goes to stdout and status lines go to stderr.
 
 ## Building and Testing
 
 ```bash
-# Build the project
 zig build
-
-# Run unit tests
 zig build test
-
-# Run the application
-zig build run -- <arguments>
+zig build run -- -O out.zip https://example.com/file.zip
 ```
 
 ## Dependencies
 
-- [yazap](https://github.com/prajwalch/yazap): Command-line argument parsing library
+- [yazap](https://github.com/prajwalch/yazap) 0.7.0 — CLI argument parsing
 
 ## License
 
-MIT License - see [LICENSE](LICENSE.txt) file for details.
+MIT License — see [LICENSE.txt](LICENSE.txt).
 
 ## Copyright
 
-Copyright (C) 2025 Alexander Egorov. All rights reserved.
+Copyright (C) 2025–2026 Alexander Egorov. All rights reserved.
