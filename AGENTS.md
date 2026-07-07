@@ -113,6 +113,7 @@ Key behaviors to preserve when changing code:
 - Use SCREAMING_SNAKE_CASE for constants
 - Prefer explicit error handling with `!` return types
 - Keep functions small and focused on single responsibility
+- Prefer gpa name for allocators in arguments
 
 ## Development Rules
 
