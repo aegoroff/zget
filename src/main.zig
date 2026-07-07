@@ -25,9 +25,10 @@ pub fn main(init: std.process.Init) !void {
     const args = try cli.parse(init, gpa);
 
     const output_target = try download.resolveOutput(gpa, init.io, args.output, args.uri);
-    const log = if (output_target == .stdout) stderr else stdout;
+    // if set -O - (that sets result to stdout like wget) then log to stderr
+    const summary = if (output_target == .stdout) stderr else stdout;
 
-    try log.print("URI: {s}\n", .{args.uri_source});
+    try summary.print("URI: {s}\n", .{args.uri_source});
 
     const proxy_config = try proxy.Config.init(gpa, init.environ_map, args.proxy);
     var client = transport.Transport.init(gpa, init.io, proxy_config);
@@ -42,23 +43,23 @@ pub fn main(init: std.process.Init) !void {
     var response = try req.receiveHead(header_buffer.items);
 
     const content_type = response.head.content_type orelse "text/plain";
-    try log.print("Content-type: {s}\n", .{content_type});
+    try summary.print("Content-type: {s}\n", .{content_type});
 
     if (response.head.status != http.Status.ok) {
-        try log.print("Http response: {d}\n", .{@intFromEnum(response.head.status)});
+        try summary.print("Http response: {d}\n", .{@intFromEnum(response.head.status)});
         return errors.ZgetError.HttpError;
     }
 
     const content_size_bytes = response.head.content_length orelse 0;
     if (content_size_bytes > 0) {
-        try log.print("Content-size: {0Bi:.2} ({0} bytes)\n", .{content_size_bytes});
+        try summary.print("Content-size: {0Bi:.2} ({0} bytes)\n", .{content_size_bytes});
     }
 
     switch (output_target) {
         .stdout => try download.streamToWriter(
             init.io,
             gpa,
-            stderr,
+            summary,
             &response,
             stdout,
             content_size_bytes,
@@ -70,7 +71,7 @@ pub fn main(init: std.process.Init) !void {
             try download.streamToFile(
                 init.io,
                 gpa,
-                stdout,
+                summary,
                 &response,
                 &file,
                 content_size_bytes,
