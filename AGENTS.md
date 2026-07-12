@@ -17,12 +17,13 @@ Instructions for AI coding agents working in the **zget** repository.
 
 ```
 src/
-  main.zig        # Entry point: orchestrates parse → download
+  main.zig        # Entry point: parse → HTTP → stream; reports errors on stderr
   cli.zig         # yazap CLI setup and argument parsing
-  download.zig    # Output path, file I/O, response body streaming
+  download.zig    # Output planning, file I/O, decompressed body streaming
   progress.zig    # Progress bar, speed display, summary stats
-  errors.zig      # Project-local error set (ZgetError)
-  transport.zig   # HTTP client wrapper (GET, headers, redirects)
+  errors.zig      # ZgetError set and user-facing error messages
+  proxy.zig       # Proxy and no_proxy configuration from env/CLI
+  transport.zig   # HTTP client wrapper (GET, headers, redirects, TLS)
 build.zig         # Build, test, run, archive steps
 build.zig.zon     # Package manifest and yazap dependency
 justfile          # Local build shortcuts (mise + zig)
@@ -72,36 +73,44 @@ Binary output: `zig-out/bin/zget` (or custom prefix from `--prefix-exe-dir`).
 
 ```
 main.zig
-  ├── cli.parse()              → URI, headers, -O
-  ├── download.resolvePath()   → file vs directory
-  ├── transport.get()          → sendBodiless() → receiveHead()
-  └── download.streamToFile()  → progress.Tracker
+  ├── cli.parse()                    → Args or version request
+  ├── download.planOutput()          → stdout, file path, or pending output
+  ├── transport.get()                → sendBodiless() → receiveHead()
+  ├── download.outputTargetFromPlan()
+  │     └── finalizePendingOutput()  → filename from URI, Content-Disposition, or index.html
+  └── download.streamToFile/Writer() → progress.Tracker
 ```
 
 | Module | Responsibility |
 |--------|----------------|
-| `cli.zig` | yazap app setup, `-H` / `-O` / URI positional |
-| `download.zig` | Resolve target path, create file, stream body with retry |
-| `transport.zig` | HTTP client lifecycle (GET, headers, redirects) |
+| `cli.zig` | yazap app setup, `-H` / `-O` / `-V` / proxy flags, URI positional |
+| `download.zig` | Plan and finalize output path, create file, stream decompressed body with retry |
+| `transport.zig` | HTTP client lifecycle (GET, headers, redirects, TLS CA bundle) |
+| `proxy.zig` | Read `http_proxy` / `https_proxy` / `no_proxy` (case-insensitive), apply to client |
 | `progress.zig` | `std.Progress` UI, speed, final summary |
-| `errors.zig` | `ZgetError` (`ResultFileNotSet`, `HttpError`) |
+| `errors.zig` | `ZgetError` and `message()` / `report()` for readable stderr errors |
 
 Keep network concerns in `transport.zig`; keep `main.zig` as thin orchestration only.
 
 Key behaviors to preserve when changing code:
 
-- `-O` pointing to an existing directory appends the filename from the URL path.
+- `-O -` writes the body to stdout; status and progress go to stderr.
+- `-O` pointing to an existing directory appends the filename from the URL path (percent-decoded).
+- If the URL has no usable basename, the output filename is resolved after response headers from `Content-Disposition`, falling back to `index.html`.
 - Non-200 responses return `ZgetError.HttpError` after printing the status.
-- Empty target path (no filename in URI and no usable `-O`) returns `ZgetError.ResultFileNotSet`.
-- Redirects are enabled via `redirect_behavior` in `transport.zig`.
-- `main` uses `init.arena.allocator()` — do not introduce a separate GPA unless there is a clear reason.
+- Response bodies are decompressed via `readerDecompressing()` when `Content-Encoding` is set.
+- Stream read/write errors are retried up to 10 times, then propagated (non-zero exit code).
+- Redirects are enabled via `redirect_behavior` in `transport.zig` (max 10 hops).
+- Proxy env vars are matched case-insensitively; if `https_proxy` is unset, `http_proxy` is reused.
+- `main` uses `init.arena.allocator()` — streaming buffers are allocated from the arena, not the stack.
+- Failures are reported through `errors.report()` on stderr without Zig stack traces.
 
 ## Zig conventions for this repo
 
 - **Minimize scope.** Small, focused diffs. No drive-by refactors.
 - **Match existing style.** Follow patterns in existing `src/*.zig` modules for naming, error handling, and allocator use.
 - **Use std library first.** HTTP goes through `std.http.Client`; avoid adding dependencies without discussion.
-- **Errors.** Project-local errors live in `errors.zig` (`ZgetError`). Propagate with `try`; use `catch` only where recovery is intentional (see the read-loop retry logic in `download.zig`).
+- **Errors.** Project-local errors live in `errors.zig` (`ZgetError` plus mapped std errors via `message()`). Propagate with `try`; use `catch` only where recovery is intentional (see the read-loop retry logic in `download.zig`). `main` catches failures and prints readable messages on stderr.
 - **I/O.** This codebase uses Zig 0.16 `std.Io` APIs (`init.io`, `std.Io.File`, `std.Io.Dir`, `std.Io.Clock`). Do not revert to pre-0.16 file APIs.
 - **Comments.** Only for non-obvious logic; the code should read clearly on its own.
 - **Tests.** Add `test` blocks in the same file as the code under test. Run `zig build test` before finishing.
