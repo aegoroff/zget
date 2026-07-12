@@ -10,6 +10,7 @@ pub const ZgetError = error{
     UnsupportedCompressionMethod,
     TlsInitializationFailed,
     InvalidTimeout,
+    InvalidMaxRedirects,
 };
 
 pub fn message(err: anyerror) ?[]const u8 {
@@ -23,6 +24,7 @@ pub fn message(err: anyerror) ?[]const u8 {
         error.UnsupportedCompressionMethod => "Unsupported Content-Encoding: compress",
         error.TlsInitializationFailed => "TLS initialization failed",
         error.InvalidTimeout => "Timeout must be a positive number of seconds",
+        error.InvalidMaxRedirects => "Max redirects must be a number from 0 to 65534",
 
         error.ConnectionRefused => "Connection refused",
         error.Timeout => "Connection timed out",

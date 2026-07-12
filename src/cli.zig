@@ -6,6 +6,8 @@ const build_options = @import("build_options");
 const errors = @import("errors.zig");
 const proxy = @import("proxy.zig");
 
+pub const DEFAULT_MAX_REDIRECTS: u16 = 10;
+
 pub const Args = struct {
     uri_source: []const u8,
     uri: std.Uri,
@@ -14,6 +16,7 @@ pub const Args = struct {
     proxy: proxy.CliOptions,
     timeout_seconds: ?u32,
     no_check_certificate: bool,
+    max_redirects: u16,
 };
 
 pub const CliResult = union(enum) {
@@ -92,6 +95,13 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
         null,
         "Don't verify the peer's TLS certificate chain",
     );
+    var max_redirect_opt = yazap.Arg.singleValueOption(
+        "max-redirect",
+        null,
+        "Maximum number of HTTP redirects to follow",
+    );
+    max_redirect_opt.setValuePlaceholder("COUNT");
+    max_redirect_opt.setProperty(.takes_value);
 
     try root_cmd.addArg(headers_opt);
     try root_cmd.addArg(output_opt);
@@ -101,6 +111,7 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     try root_cmd.addArg(version_opt);
     try root_cmd.addArg(timeout_opt);
     try root_cmd.addArg(no_check_certificate_opt);
+    try root_cmd.addArg(max_redirect_opt);
     try root_cmd.addArg(uri_opt);
 
     const raw_argv = try init.minimal.args.toSlice(gpa);
@@ -117,6 +128,11 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     else
         null;
 
+    const max_redirects = if (matches.getSingleValue("max-redirect")) |value|
+        try parseMaxRedirects(value)
+    else
+        DEFAULT_MAX_REDIRECTS;
+
     return .{ .run = .{
         .uri_source = source,
         .uri = uri,
@@ -129,7 +145,14 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
         },
         .timeout_seconds = timeout_seconds,
         .no_check_certificate = matches.containsArg("no-check-certificate"),
+        .max_redirects = max_redirects,
     } };
+}
+
+fn parseMaxRedirects(raw: []const u8) errors.ZgetError!u16 {
+    const count = std.fmt.parseInt(u16, raw, 10) catch return error.InvalidMaxRedirects;
+    if (count == std.math.maxInt(u16)) return error.InvalidMaxRedirects;
+    return count;
 }
 
 fn parseTimeoutSeconds(raw: []const u8) errors.ZgetError!u32 {
@@ -204,6 +227,16 @@ test "normalizeOutputDashArgv rewrites --output -" {
     try std.testing.expectEqual(@as(usize, 2), normalized.len);
     try std.testing.expectEqualStrings("--output=-", normalized[0]);
     try std.testing.expectEqualStrings("https://example.com", normalized[1]);
+}
+
+test "parseMaxRedirects accepts zero and positive values" {
+    try std.testing.expectEqual(@as(u16, 0), try parseMaxRedirects("0"));
+    try std.testing.expectEqual(@as(u16, 10), try parseMaxRedirects("10"));
+}
+
+test "parseMaxRedirects rejects invalid values" {
+    try std.testing.expectError(error.InvalidMaxRedirects, parseMaxRedirects("abc"));
+    try std.testing.expectError(error.InvalidMaxRedirects, parseMaxRedirects("65535"));
 }
 
 test "parseTimeoutSeconds accepts positive values" {

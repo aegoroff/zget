@@ -8,7 +8,7 @@ A non-interactive network retriever implemented in [Zig](https://ziglang.org/) 0
 
 ## Features
 
-- HTTP/HTTPS downloads with automatic redirect following (up to 10 hops)
+- HTTP/HTTPS downloads with automatic redirect following (default: 10 hops, configurable)
 - Automatic decompression of gzip/deflate/zstd response bodies
 - Custom HTTP headers (`-H`)
 - Proxy support via environment variables (case-insensitive names)
@@ -109,6 +109,7 @@ zget -O - https://example.com/file.zip
 | `--proxy-password <PASS>` | Password for proxy authentication |
 | `-V, --version` | Print version information and exit |
 | `--timeout <SECONDS>` | Connection and read timeout in seconds |
+| `--max-redirect <COUNT>` | Maximum number of HTTP redirects to follow (default: 10) |
 | `--no-check-certificate` | Don't verify the peer's TLS certificate chain (direct HTTPS only) |
 | `-h, --help` | Print help and exit |
 

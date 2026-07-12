@@ -67,6 +67,7 @@ fn executeDownload(
         proxy_config,
         args.timeout_seconds,
         args.no_check_certificate,
+        args.max_redirects,
     );
     defer client.deinit();
     var req = try client.get(args.uri, args.headers, stderr);

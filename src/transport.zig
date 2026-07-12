@@ -9,8 +9,6 @@ const tls_connect = @import("tls_connect.zig");
 
 const HostName = std.Io.net.HostName;
 
-const MAX_REDIRECTS = 10;
-const DEFAULT_REDIRECT_BEHAVIOR = http.Client.Request.RedirectBehavior.init(MAX_REDIRECTS);
 const DEFAULT_USER_AGENT = std.fmt.comptimePrint("zget/{s}", .{build_options.version});
 
 gpa: std.mem.Allocator,
@@ -19,6 +17,7 @@ extra_headers: std.ArrayList(http.Header),
 proxy_config: proxy.Config,
 io_timeout: std.Io.Timeout,
 no_check_certificate: bool,
+redirect_behavior: http.Client.Request.RedirectBehavior,
 
 pub fn init(
     gpa: std.mem.Allocator,
@@ -26,6 +25,7 @@ pub fn init(
     proxy_config: proxy.Config,
     timeout_seconds: ?u32,
     no_check_certificate: bool,
+    max_redirects: u16,
 ) Transport {
     var http_client = std.http.Client{
         .allocator = gpa,
@@ -45,6 +45,7 @@ pub fn init(
         .proxy_config = proxy_config,
         .io_timeout = io_timeout,
         .no_check_certificate = no_check_certificate,
+        .redirect_behavior = http.Client.Request.RedirectBehavior.init(max_redirects),
     };
 }
 
@@ -82,7 +83,7 @@ pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8, warnings
         }
 
         break :blk http.Client.RequestOptions{
-            .redirect_behavior = DEFAULT_REDIRECT_BEHAVIOR,
+            .redirect_behavior = self.redirect_behavior,
             .extra_headers = self.extra_headers.items,
             .headers = .{
                 .user_agent = user_agent,
