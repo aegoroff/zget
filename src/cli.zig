@@ -13,7 +13,16 @@ pub const Args = struct {
     proxy: proxy.CliOptions,
 };
 
-pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !Args {
+pub const CliResult = union(enum) {
+    run: Args,
+    version,
+};
+
+pub fn printVersion(writer: *std.Io.Writer) !void {
+    try writer.print("zget {s}\n", .{build_options.version});
+}
+
+pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     const query = std.Target.Query.fromTarget(&builtin.target);
 
     const app_descr_template =
@@ -63,22 +72,30 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !Args {
         null,
         "Password for authentication on a proxy server",
     );
+    const version_opt = yazap.Arg.booleanOption(
+        "version",
+        'V',
+        "Print version information and exit",
+    );
 
     try root_cmd.addArg(headers_opt);
     try root_cmd.addArg(output_opt);
     try root_cmd.addArg(no_proxy_opt);
     try root_cmd.addArg(proxy_user_opt);
     try root_cmd.addArg(proxy_password_opt);
+    try root_cmd.addArg(version_opt);
     try root_cmd.addArg(uri_opt);
 
     const raw_argv = try init.minimal.args.toSlice(gpa);
     const argv = try normalizeOutputDashArgv(gpa, raw_argv[1..]);
+    if (wantsVersion(argv)) return .version;
+
     const matches = try app.parseFrom(init.io, argv);
 
     const source = matches.getSingleValue("URI").?;
     const uri = try std.Uri.parse(source);
 
-    return .{
+    return .{ .run = .{
         .uri_source = source,
         .uri = uri,
         .headers = matches.getMultiValues("header") orelse &[_][]const u8{},
@@ -88,7 +105,14 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !Args {
             .proxy_user = matches.getSingleValue("proxy-user"),
             .proxy_password = matches.getSingleValue("proxy-password"),
         },
-    };
+    } };
+}
+
+fn wantsVersion(argv: []const [:0]const u8) bool {
+    for (argv) |arg| {
+        if (std.mem.eql(u8, arg, "--version") or std.mem.eql(u8, arg, "-V")) return true;
+    }
+    return false;
 }
 
 fn isOutputOption(arg: []const u8) bool {
@@ -115,6 +139,17 @@ fn normalizeOutputDashArgv(gpa: std.mem.Allocator, argv: []const [:0]const u8) !
     }
 
     return try normalized.toOwnedSlice(gpa);
+}
+
+test "wantsVersion detects version flags" {
+    const version_argv = [_][:0]const u8{"--version"};
+    try std.testing.expect(wantsVersion(&version_argv));
+
+    const short_argv = [_][:0]const u8{"-V"};
+    try std.testing.expect(wantsVersion(&short_argv));
+
+    const download_argv = [_][:0]const u8{"https://example.com"};
+    try std.testing.expect(!wantsVersion(&download_argv));
 }
 
 test "normalizeOutputDashArgv rewrites -O -" {

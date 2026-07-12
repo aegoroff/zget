@@ -31,8 +31,23 @@ fn run(init: std.process.Init) !void {
         stderr.flush() catch {};
     }
 
-    const args = try cli.parse(init, gpa);
+    const parsed = try cli.parse(init, gpa);
+    switch (parsed) {
+        .version => {
+            try cli.printVersion(stdout);
+            return;
+        },
+        .run => |args| try executeDownload(init, gpa, stdout, stderr, args),
+    }
+}
 
+fn executeDownload(
+    init: std.process.Init,
+    gpa: std.mem.Allocator,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+    args: cli.Args,
+) !void {
     const output_plan = try download.planOutput(gpa, init.io, args.output, args.uri);
     // if set -O - (that sets result to stdout like wget) then log to stderr
     const summary = if (output_plan == .stdout) stderr else stdout;
