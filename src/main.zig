@@ -5,6 +5,7 @@ const errors = @import("errors.zig");
 const proxy = @import("proxy.zig");
 const timeout = @import("timeout.zig");
 const transport = @import("transport.zig");
+const checksum = @import("checksum.zig");
 const http = std.http;
 
 pub fn main(init: std.process.Init) void {
@@ -111,6 +112,12 @@ fn executeDownload(
         response.head.content_disposition,
     );
 
+    const checksum_opts = checksum.Options{
+        .algorithm = args.checksum,
+        .expected = args.validate_digest,
+        .quiet = args.quiet,
+    };
+
     switch (output_target) {
         .stdout => try download.streamToWriter(
             init.io,
@@ -121,7 +128,8 @@ fn executeDownload(
             content_size_bytes,
             io_timeout,
             args.quiet,
-            args.checksum,
+            checksum_opts,
+            warnings,
         ),
         .file => |target| {
             var file = try download.createFile(init.io, target);
@@ -136,7 +144,8 @@ fn executeDownload(
                 content_size_bytes,
                 io_timeout,
                 args.quiet,
-                args.checksum,
+                checksum_opts,
+                warnings,
             );
         },
     }

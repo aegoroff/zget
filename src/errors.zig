@@ -12,6 +12,8 @@ pub const ZgetError = error{
     InvalidTimeout,
     InvalidMaxRedirects,
     InvalidChecksum,
+    InvalidValidateDigest,
+    ValidateRequiresChecksum,
 };
 
 pub fn message(err: anyerror) ?[]const u8 {
@@ -27,6 +29,8 @@ pub fn message(err: anyerror) ?[]const u8 {
         error.InvalidTimeout => "Timeout must be a positive number of seconds",
         error.InvalidMaxRedirects => "Max redirects must be a number from 0 to 65534",
         error.InvalidChecksum => "Unsupported checksum type (only sha256 and blake3 are supported)",
+        error.InvalidValidateDigest => "Validate digest must be 64 hexadecimal characters",
+        error.ValidateRequiresChecksum => "--validate requires --checksum",
 
         error.ConnectionRefused => "Connection refused",
         error.Timeout => "Connection timed out",

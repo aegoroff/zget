@@ -242,7 +242,8 @@ pub fn streamToWriter(
     content_size_bytes: u64,
     read_timeout: std.Io.Timeout,
     quiet: bool,
-    checksum_alg: ?checksum.Algorithm,
+    checksum_opts: checksum.Options,
+    warnings: ?*std.Io.Writer,
 ) !void {
     const read_buf = try gpa.alloc(u8, READ_BUF_LEN);
 
@@ -259,7 +260,7 @@ pub fn streamToWriter(
     const reader = response.readerDecompressing(read_buf, &decompress, decompress_buf);
 
     var hash_writer_buf: [checksum.hash_buf_len]u8 = undefined;
-    var checksum_stream = checksum.Stream.init(dest, hash_writer_buf[0..], quiet, checksum_alg);
+    var checksum_stream = checksum.Stream.init(dest, hash_writer_buf[0..], checksum_opts);
     const stream_dest = checksum_stream.writer();
 
     var tracker: ?progress.Tracker = null;
@@ -302,7 +303,7 @@ pub fn streamToWriter(
         }
     }
 
-    try checksum_stream.finish(summary);
+    try checksum_stream.finish(summary, warnings);
 }
 
 pub fn streamToFile(
@@ -314,7 +315,8 @@ pub fn streamToFile(
     content_size_bytes: u64,
     read_timeout: std.Io.Timeout,
     quiet: bool,
-    checksum_alg: ?checksum.Algorithm,
+    checksum_opts: checksum.Options,
+    warnings: ?*std.Io.Writer,
 ) !void {
     const file_buffer = try gpa.alloc(u8, READ_BUF_LEN);
     var file_writer = file.writer(io, file_buffer);
@@ -323,7 +325,7 @@ pub fn streamToFile(
         file_interface.flush() catch {};
     }
 
-    try streamToWriter(io, gpa, summary, response, file_interface, content_size_bytes, read_timeout, quiet, checksum_alg);
+    try streamToWriter(io, gpa, summary, response, file_interface, content_size_bytes, read_timeout, quiet, checksum_opts, warnings);
 }
 
 test "afterStreamReadError retries until limit" {

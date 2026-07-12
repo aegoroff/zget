@@ -20,6 +20,7 @@ pub const Args = struct {
     max_redirects: u16,
     quiet: bool,
     checksum: ?checksum.Algorithm,
+    validate_digest: ?checksum.Digest,
 };
 
 pub const CliResult = union(enum) {
@@ -117,6 +118,13 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     );
     checksum_opt.setValuePlaceholder("TYPE");
     checksum_opt.setProperty(.takes_value);
+    var validate_opt = yazap.Arg.singleValueOption(
+        "validate",
+        null,
+        "Expected checksum digest to validate downloaded content",
+    );
+    validate_opt.setValuePlaceholder("DIGEST");
+    validate_opt.setProperty(.takes_value);
 
     try root_cmd.addArg(headers_opt);
     try root_cmd.addArg(output_opt);
@@ -129,6 +137,7 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     try root_cmd.addArg(no_check_certificate_opt);
     try root_cmd.addArg(max_redirect_opt);
     try root_cmd.addArg(checksum_opt);
+    try root_cmd.addArg(validate_opt);
     try root_cmd.addArg(uri_opt);
 
     const raw_argv = try init.minimal.args.toSlice(gpa);
@@ -155,6 +164,15 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     else
         null;
 
+    const validate_digest = if (matches.getSingleValue("validate")) |value|
+        try checksum.parseDigest(value)
+    else
+        null;
+
+    if (validate_digest != null and checksum_alg == null) {
+        return error.ValidateRequiresChecksum;
+    }
+
     return .{ .run = .{
         .uri_source = source,
         .uri = uri,
@@ -170,6 +188,7 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
         .max_redirects = max_redirects,
         .quiet = matches.containsArg("quiet"),
         .checksum = checksum_alg,
+        .validate_digest = validate_digest,
     } };
 }
 
