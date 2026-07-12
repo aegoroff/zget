@@ -1,5 +1,6 @@
 const std = @import("std");
 const http = std.http;
+const errors = @import("errors.zig");
 const progress = @import("progress.zig");
 
 const READ_BUF_LEN = 16 * 4096;
@@ -240,7 +241,7 @@ pub fn streamToWriter(
     const read_buf = try gpa.alloc(u8, READ_BUF_LEN);
 
     const encoding = response.head.content_encoding;
-    if (encoding == .compress) return error.UnsupportedCompressionMethod;
+    if (encoding == .compress) return errors.ZgetError.UnsupportedCompressionMethod;
 
     const decompress_buf_len = encoding.minBufferCapacity();
     const decompress_buf: []u8 = if (decompress_buf_len == 0)

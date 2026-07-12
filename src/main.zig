@@ -6,7 +6,16 @@ const proxy = @import("proxy.zig");
 const transport = @import("transport.zig");
 const http = std.http;
 
-pub fn main(init: std.process.Init) !void {
+pub fn main(init: std.process.Init) void {
+    run(init) catch |err| {
+        var stderr_buffer: [1024]u8 = undefined;
+        var stderr_writer = std.Io.File.stderr().writer(init.io, &stderr_buffer);
+        errors.report(&stderr_writer.interface, err);
+        std.process.exit(1);
+    };
+}
+
+fn run(init: std.process.Init) !void {
     const gpa = init.arena.allocator();
     var stdout_buffer: [1024]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);

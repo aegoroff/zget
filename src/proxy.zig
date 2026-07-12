@@ -1,6 +1,8 @@
 const std = @import("std");
 const http = std.http;
 
+const errors = @import("errors.zig");
+
 pub const CliOptions = struct {
     no_proxy: bool = false,
     proxy_user: ?[]const u8 = null,
@@ -78,10 +80,10 @@ fn createProxy(
     proxy_user: ?[]const u8,
     proxy_password: []const u8,
 ) !*http.Client.Proxy {
-    if (url.len == 0) return error.EmptyProxyUrl;
+    if (url.len == 0) return errors.ZgetError.EmptyProxyUrl;
 
     const uri = std.Uri.parse(url) catch try std.Uri.parseAfterScheme("http", url);
-    const protocol = http.Client.Protocol.fromUri(uri) orelse return error.UnsupportedProxyScheme;
+    const protocol = http.Client.Protocol.fromUri(uri) orelse return errors.ZgetError.UnsupportedProxyScheme;
     const raw_host = try uri.getHostAlloc(gpa);
 
     const authorization = if (proxy_user) |user|
