@@ -41,10 +41,11 @@ fn isUsableFileName(name: []const u8) bool {
     return true;
 }
 
-pub fn fileNameFromUri(uri: std.Uri) ?[]const u8 {
+pub fn fileNameFromUri(gpa: std.mem.Allocator, uri: std.Uri) !?[]const u8 {
     const base = std.fs.path.basename(uri.path.percent_encoded);
     if (!isUsableFileName(base)) return null;
-    return base;
+    if (std.mem.indexOfScalar(u8, base, '%') == null) return base;
+    return try percentDecodeAlloc(gpa, base);
 }
 
 fn findContentDispositionParam(disposition: []const u8, param_name: []const u8) ?[]const u8 {
@@ -128,7 +129,7 @@ pub fn resolveFileName(
     uri: std.Uri,
     content_disposition: ?[]const u8,
 ) ![]const u8 {
-    if (fileNameFromUri(uri)) |name| return name;
+    if (try fileNameFromUri(gpa, uri)) |name| return name;
 
     if (content_disposition) |disposition| {
         if (findContentDispositionParam(disposition, "filename*")) |value| {
@@ -174,7 +175,7 @@ pub fn planOutput(
         if (std.mem.eql(u8, output, "-")) return .stdout;
     }
 
-    if (fileNameFromUri(uri)) |file_name| {
+    if (try fileNameFromUri(gpa, uri)) |file_name| {
         if (output_opt) |output| {
             if (isExistingDirectory(io, output)) {
                 return .{ .file = try std.fs.path.join(gpa, &[_][]const u8{ output, file_name }) };
@@ -306,10 +307,20 @@ test "afterStreamReadError retries until limit" {
 
 test "fileNameFromUri rejects directory paths" {
     const root = try std.Uri.parse("https://example.com/");
-    try std.testing.expect(fileNameFromUri(root) == null);
+    try std.testing.expect((try fileNameFromUri(std.testing.allocator, root)) == null);
 
     const with_file = try std.Uri.parse("https://example.com/file.txt");
-    try std.testing.expectEqualStrings("file.txt", fileNameFromUri(with_file).?);
+    try std.testing.expectEqualStrings("file.txt", (try fileNameFromUri(std.testing.allocator, with_file)).?);
+}
+
+test "fileNameFromUri decodes percent-encoded names" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const uri = try std.Uri.parse("https://example.com/my%20file.zip");
+    const name = try fileNameFromUri(arena, uri);
+    try std.testing.expectEqualStrings("my file.zip", name.?);
 }
 
 test "parseContentDispositionFileName quoted value" {
