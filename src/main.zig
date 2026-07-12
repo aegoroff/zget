@@ -8,6 +8,20 @@ const transport = @import("transport.zig");
 const checksum = @import("checksum.zig");
 const http = std.http;
 
+const SummaryLog = struct {
+    out: ?*std.Io.Writer,
+    warnings: ?*std.Io.Writer,
+
+    fn init(out: *std.Io.Writer, warnings: *std.Io.Writer, quiet: bool) SummaryLog {
+        if (quiet) return .{ .out = null, .warnings = null };
+        return .{ .out = out, .warnings = warnings };
+    }
+
+    fn print(self: SummaryLog, comptime fmt: []const u8, args: anytype) !void {
+        if (self.out) |writer| try writer.print(fmt, args);
+    }
+};
+
 pub fn main(init: std.process.Init) void {
     run(init) catch |err| {
         if (err == error.ChecksumMismatch) {
@@ -60,12 +74,10 @@ fn executeDownload(
 
     const output_plan = try download.planOutput(gpa, init.io, args.output, args.uri);
     // if set -O - (that sets result to stdout like wget) then log to stderr
-    const summary = if (output_plan == .stdout) stderr else stdout;
-    const warnings: ?*std.Io.Writer = if (args.quiet) null else stderr;
+    const summary_out = if (output_plan == .stdout) stderr else stdout;
+    const log = SummaryLog.init(summary_out, stderr, args.quiet);
 
-    if (!args.quiet) {
-        try summary.print("URI: {s}\n", .{args.uri_source});
-    }
+    try log.print("URI: {s}\n", .{args.uri_source});
 
     const proxy_config = try proxy.Config.init(gpa, init.environ_map, args.proxy);
     var client = transport.Transport.init(
@@ -77,7 +89,7 @@ fn executeDownload(
         args.max_redirects,
     );
     defer client.deinit();
-    var req = try client.get(args.uri, args.headers, warnings);
+    var req = try client.get(args.uri, args.headers, log.warnings);
     defer req.deinit();
 
     try req.sendBodiless();
@@ -91,21 +103,17 @@ fn executeDownload(
         io_timeout,
     );
 
-    if (!args.quiet) {
-        const content_type = response.head.content_type orelse "text/plain";
-        try summary.print("Content-type: {s}\n", .{content_type});
-    }
+    const content_type = response.head.content_type orelse "text/plain";
+    try log.print("Content-type: {s}\n", .{content_type});
 
     if (response.head.status != http.Status.ok) {
-        if (!args.quiet) {
-            try summary.print("Http response: {d}\n", .{@intFromEnum(response.head.status)});
-        }
+        try log.print("Http response: {d}\n", .{@intFromEnum(response.head.status)});
         return errors.ZgetError.HttpError;
     }
 
     const content_size_bytes = response.head.content_length orelse 0;
-    if (!args.quiet and content_size_bytes > 0) {
-        try summary.print("Content-size: {0Bi:.2} ({0} bytes)\n", .{content_size_bytes});
+    if (content_size_bytes > 0) {
+        try log.print("Content-size: {0Bi:.2} ({0} bytes)\n", .{content_size_bytes});
     }
 
     const output_target = try download.outputTargetFromPlan(
@@ -125,13 +133,13 @@ fn executeDownload(
         .stdout => try download.streamToWriter(
             init.io,
             gpa,
-            summary,
+            summary_out,
             &response,
             stdout,
             content_size_bytes,
             io_timeout,
             checksum_opts,
-            warnings,
+            log.warnings,
         ),
         .file => |target| {
             var file = try download.createFile(init.io, target);
@@ -140,13 +148,13 @@ fn executeDownload(
             try download.streamToFile(
                 init.io,
                 gpa,
-                summary,
+                summary_out,
                 &response,
                 &file,
                 content_size_bytes,
                 io_timeout,
                 checksum_opts,
-                warnings,
+                log.warnings,
             );
         },
     }
