@@ -241,7 +241,6 @@ pub fn streamToWriter(
     dest: *std.Io.Writer,
     content_size_bytes: u64,
     read_timeout: std.Io.Timeout,
-    quiet: bool,
     checksum_opts: checksum.Options,
     warnings: ?*std.Io.Writer,
 ) !void {
@@ -264,7 +263,7 @@ pub fn streamToWriter(
     const stream_dest = checksum_stream.writer();
 
     var tracker: ?progress.Tracker = null;
-    if (!quiet) {
+    if (!checksum_opts.quiet) {
         tracker = progress.Tracker.start(io, content_size_bytes);
     }
     defer if (tracker) |*t| {
@@ -285,7 +284,7 @@ pub fn streamToWriter(
                     return response.bodyErr().?;
                 },
                 else => |e| {
-                    if (!quiet) {
+                    if (!checksum_opts.quiet) {
                         try summary.print("Error: {}\n", .{e});
                     }
                     switch (afterStreamReadError(read_errors)) {
@@ -314,7 +313,6 @@ pub fn streamToFile(
     file: *std.Io.File,
     content_size_bytes: u64,
     read_timeout: std.Io.Timeout,
-    quiet: bool,
     checksum_opts: checksum.Options,
     warnings: ?*std.Io.Writer,
 ) !void {
@@ -325,7 +323,17 @@ pub fn streamToFile(
         file_interface.flush() catch {};
     }
 
-    try streamToWriter(io, gpa, summary, response, file_interface, content_size_bytes, read_timeout, quiet, checksum_opts, warnings);
+    try streamToWriter(
+        io,
+        gpa,
+        summary,
+        response,
+        file_interface,
+        content_size_bytes,
+        read_timeout,
+        checksum_opts,
+        warnings,
+    );
 }
 
 test "afterStreamReadError retries until limit" {

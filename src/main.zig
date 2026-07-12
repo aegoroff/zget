@@ -127,7 +127,6 @@ fn executeDownload(
             stdout,
             content_size_bytes,
             io_timeout,
-            args.quiet,
             checksum_opts,
             warnings,
         ),
@@ -143,7 +142,6 @@ fn executeDownload(
                 &file,
                 content_size_bytes,
                 io_timeout,
-                args.quiet,
                 checksum_opts,
                 warnings,
             );

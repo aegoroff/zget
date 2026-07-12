@@ -25,11 +25,38 @@ pub const Options = struct {
     }
 };
 
+const Sha256Hashed = std.Io.Writer.Hashed(std.crypto.hash.sha2.Sha256);
+const Blake3Hashed = std.Io.Writer.Hashed(std.crypto.hash.Blake3);
+
+const HashedWriter = union(Algorithm) {
+    sha256: Sha256Hashed,
+    blake3: Blake3Hashed,
+
+    fn writer(self: *HashedWriter) *std.Io.Writer {
+        return switch (self.*) {
+            .sha256 => |*hashing| &hashing.writer,
+            .blake3 => |*hashing| &hashing.writer,
+        };
+    }
+
+    fn finalize(self: *HashedWriter) !Digest {
+        return switch (self.*) {
+            .sha256 => |*hashing| blk: {
+                try hashing.writer.flush();
+                break :blk hashing.hasher.finalResult();
+            },
+            .blake3 => |*hashing| blk: {
+                try hashing.writer.flush();
+                break :blk digestFromBlake3(&hashing.hasher);
+            },
+        };
+    }
+};
+
 pub const Stream = struct {
     options: Options,
     dest: *std.Io.Writer,
-    sha256_writer: ?std.Io.Writer.Hashed(std.crypto.hash.sha2.Sha256) = null,
-    blake3_writer: ?std.Io.Writer.Hashed(std.crypto.hash.Blake3) = null,
+    hashed: ?HashedWriter = null,
 
     pub fn init(dest: *std.Io.Writer, hash_buf: []u8, options: Options) Stream {
         var stream = Stream{
@@ -38,34 +65,28 @@ pub const Stream = struct {
         };
         if (options.shouldHash()) {
             const alg = options.algorithm.?;
-            switch (alg) {
-                .sha256 => {
-                    stream.sha256_writer = std.Io.Writer.hashed(
+            stream.hashed = switch (alg) {
+                .sha256 => .{
+                    .sha256 = std.Io.Writer.hashed(
                         dest,
                         std.crypto.hash.sha2.Sha256.init(.{}),
                         hash_buf,
-                    );
+                    ),
                 },
-                .blake3 => {
-                    stream.blake3_writer = std.Io.Writer.hashed(
+                .blake3 => .{
+                    .blake3 = std.Io.Writer.hashed(
                         dest,
                         std.crypto.hash.Blake3.init(.{}),
                         hash_buf,
-                    );
+                    ),
                 },
-            }
+            };
         }
         return stream;
     }
 
     pub fn writer(self: *Stream) *std.Io.Writer {
-        if (self.options.shouldHash()) {
-            const alg = self.options.algorithm.?;
-            switch (alg) {
-                .sha256 => if (self.sha256_writer) |*hashing| return &hashing.writer,
-                .blake3 => if (self.blake3_writer) |*hashing| return &hashing.writer,
-            }
-        }
+        if (self.hashed) |*active| return active.writer();
         return self.dest;
     }
 
@@ -73,7 +94,7 @@ pub const Stream = struct {
         const alg = self.options.algorithm orelse return;
         if (!self.options.shouldHash()) return;
 
-        const digest = try self.finalizeDigest(alg);
+        const digest = try self.hashed.?.finalize();
 
         if (self.options.expected) |expected| {
             if (!std.mem.eql(u8, &expected, &digest)) {
@@ -84,25 +105,6 @@ pub const Stream = struct {
         if (self.options.shouldPrint()) {
             try print(summary, alg, digest);
         }
-    }
-
-    fn finalizeDigest(self: *Stream, alg: Algorithm) !Digest {
-        return switch (alg) {
-            .sha256 => blk: {
-                if (self.sha256_writer) |*hashing| {
-                    try hashing.writer.flush();
-                    break :blk hashing.hasher.finalResult();
-                }
-                return error.ChecksumNotComputed;
-            },
-            .blake3 => blk: {
-                if (self.blake3_writer) |*hashing| {
-                    try hashing.writer.flush();
-                    break :blk digestFromBlake3(&hashing.hasher);
-                }
-                return error.ChecksumNotComputed;
-            },
-        };
     }
 };
 
@@ -122,11 +124,7 @@ pub fn parseDigest(raw: []const u8) errors.ZgetError!Digest {
 }
 
 pub fn print(writer: *std.Io.Writer, algorithm: Algorithm, digest: Digest) !void {
-    const label = switch (algorithm) {
-        .sha256 => "SHA256",
-        .blake3 => "BLAKE3",
-    };
-    try writer.print("{s}: ", .{label});
+    try writer.print("{s}: ", .{label(algorithm)});
     try writeHex(writer, digest);
     try writer.print("\n", .{});
 }
@@ -137,15 +135,18 @@ pub fn warnMismatch(
     expected: Digest,
     actual: Digest,
 ) void {
-    const label = switch (algorithm) {
-        .sha256 => "SHA256",
-        .blake3 => "BLAKE3",
-    };
-    writer.print("warning: {s} checksum mismatch (expected ", .{label}) catch {};
+    writer.print("warning: {s} checksum mismatch (expected ", .{label(algorithm)}) catch {};
     writeHex(writer, expected) catch {};
     writer.print(", got ", .{}) catch {};
     writeHex(writer, actual) catch {};
     writer.print(")\n", .{}) catch {};
+}
+
+fn label(algorithm: Algorithm) []const u8 {
+    return switch (algorithm) {
+        .sha256 => "SHA256",
+        .blake3 => "BLAKE3",
+    };
 }
 
 fn writeHex(writer: *std.Io.Writer, digest: Digest) !void {
