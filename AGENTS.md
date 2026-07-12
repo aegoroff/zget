@@ -24,6 +24,8 @@ src/
   errors.zig      # ZgetError set and user-facing error messages
   proxy.zig       # Proxy and no_proxy configuration from env/CLI
   transport.zig   # HTTP client wrapper (GET, headers, redirects, TLS)
+  timeout.zig     # Io.Select-based connect, receiveHead, and read timeouts
+  tls_connect.zig # Direct HTTPS connections with optional CA verification skip
 build.zig         # Build, test, run, archive steps
 build.zig.zon     # Package manifest and yazap dependency
 justfile          # Local build shortcuts (mise + zig)
@@ -75,6 +77,7 @@ Binary output: `zig-out/bin/zget` (or custom prefix from `--prefix-exe-dir`).
 main.zig
   ├── cli.parse()                    → Args or version request
   ├── download.planOutput()          → stdout, file path, or pending output
+  ├── transport.init()               → redirect limit, TLS options, timeout
   ├── transport.get()                → sendBodiless() → receiveHead()
   ├── download.outputTargetFromPlan()
   │     └── finalizePendingOutput()  → filename from URI, Content-Disposition, or index.html
@@ -83,9 +86,11 @@ main.zig
 
 | Module | Responsibility |
 |--------|----------------|
-| `cli.zig` | yazap app setup, `-H` / `-O` / `-V` / proxy flags, URI positional |
+| `cli.zig` | yazap app setup, `-H` / `-O` / `-V` / `--timeout` / `--no-check-certificate` / `--max-redirect` / proxy flags, URI positional |
 | `download.zig` | Plan and finalize output path, create file, stream decompressed body with retry |
-| `transport.zig` | HTTP client lifecycle (GET, headers, redirects, TLS CA bundle) |
+| `transport.zig` | HTTP client lifecycle (GET, headers, redirects, TLS CA bundle, insecure direct HTTPS) |
+| `timeout.zig` | `Io.Select`-based connect, `receiveHead`, and body-read timeouts |
+| `tls_connect.zig` | Direct HTTPS `connectInsecure()` when `--no-check-certificate` is set |
 | `proxy.zig` | Read `http_proxy` / `https_proxy` / `no_proxy` (case-insensitive), apply to client |
 | `progress.zig` | `std.Progress` UI, speed, final summary |
 | `errors.zig` | `ZgetError` and `message()` / `report()` for readable stderr errors |
@@ -100,7 +105,10 @@ Key behaviors to preserve when changing code:
 - Non-200 responses return `ZgetError.HttpError` after printing the status.
 - Response bodies are decompressed via `readerDecompressing()` when `Content-Encoding` is set.
 - Stream read/write errors are retried up to 10 times, then propagated (non-zero exit code).
-- Redirects are enabled via `redirect_behavior` in `transport.zig` (max 10 hops).
+- Redirects are enabled via `redirect_behavior` in `transport.zig`; `--max-redirect` sets the limit (default: `cli.DEFAULT_MAX_REDIRECTS`, 10).
+- `--timeout SECONDS` applies connect, response-header, and body-read timeouts via `timeout.zig` (`Io.Select`, not socket `SO_RCVTIMEO`).
+- `--no-check-certificate` skips TLS CA chain verification on direct HTTPS only (`tls_connect.zig`); hostname is still verified. Proxied HTTPS and redirect follow-up connections use normal verification.
+- Malformed `-H` values are ignored with a stderr warning (`transport.warnIgnoredHeader`).
 - Proxy env vars are matched case-insensitively; if `https_proxy` is unset, `http_proxy` is reused.
 - `main` uses `init.arena.allocator()` — streaming buffers are allocated from the arena, not the stack.
 - Failures are reported through `errors.report()` on stderr without Zig stack traces.
