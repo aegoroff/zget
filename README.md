@@ -18,6 +18,7 @@ A non-interactive network retriever implemented in [Zig](https://ziglang.org/) 0
 - Readable error messages on stderr
 - `--version` / `-V`
 - `--timeout` — connection and read timeout in seconds
+- `--no-check-certificate` — skip TLS certificate chain verification (direct HTTPS only)
 - Default `User-Agent: zget/<version>` header
 - Cross-platform builds (Linux, macOS, Windows)
 
@@ -108,6 +109,7 @@ zget -O - https://example.com/file.zip
 | `--proxy-password <PASS>` | Password for proxy authentication |
 | `-V, --version` | Print version information and exit |
 | `--timeout <SECONDS>` | Connection and read timeout in seconds |
+| `--no-check-certificate` | Don't verify the peer's TLS certificate chain (direct HTTPS only) |
 | `-h, --help` | Print help and exit |
 
 Positional argument: `URI` — the URL to download (`http://` or `https://` only).

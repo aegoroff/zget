@@ -13,6 +13,7 @@ pub const Args = struct {
     output: ?[]const u8,
     proxy: proxy.CliOptions,
     timeout_seconds: ?u32,
+    no_check_certificate: bool,
 };
 
 pub const CliResult = union(enum) {
@@ -86,6 +87,11 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     );
     timeout_opt.setValuePlaceholder("SECONDS");
     timeout_opt.setProperty(.takes_value);
+    const no_check_certificate_opt = yazap.Arg.booleanOption(
+        "no-check-certificate",
+        null,
+        "Don't verify the peer's TLS certificate chain",
+    );
 
     try root_cmd.addArg(headers_opt);
     try root_cmd.addArg(output_opt);
@@ -94,6 +100,7 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     try root_cmd.addArg(proxy_password_opt);
     try root_cmd.addArg(version_opt);
     try root_cmd.addArg(timeout_opt);
+    try root_cmd.addArg(no_check_certificate_opt);
     try root_cmd.addArg(uri_opt);
 
     const raw_argv = try init.minimal.args.toSlice(gpa);
@@ -121,6 +128,7 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
             .proxy_password = matches.getSingleValue("proxy-password"),
         },
         .timeout_seconds = timeout_seconds,
+        .no_check_certificate = matches.containsArg("no-check-certificate"),
     } };
 }
 

@@ -61,7 +61,13 @@ fn executeDownload(
     try summary.print("URI: {s}\n", .{args.uri_source});
 
     const proxy_config = try proxy.Config.init(gpa, init.environ_map, args.proxy);
-    var client = transport.Transport.init(gpa, init.io, proxy_config, args.timeout_seconds);
+    var client = transport.Transport.init(
+        gpa,
+        init.io,
+        proxy_config,
+        args.timeout_seconds,
+        args.no_check_certificate,
+    );
     defer client.deinit();
     var req = try client.get(args.uri, args.headers, stderr);
     defer req.deinit();
@@ -70,7 +76,12 @@ fn executeDownload(
 
     var header_buffer = try std.ArrayList(u8).initCapacity(gpa, 65536);
     header_buffer.expandToCapacity();
-    var response = try timeout.receiveHeadWithTimeout(init.io, &req, header_buffer.items, io_timeout);
+    var response = try timeout.receiveHeadWithTimeout(
+        init.io,
+        &req,
+        header_buffer.items,
+        io_timeout,
+    );
 
     const content_type = response.head.content_type orelse "text/plain";
     try summary.print("Content-type: {s}\n", .{content_type});
@@ -128,4 +139,5 @@ test {
     _ = @import("proxy.zig");
     _ = @import("transport.zig");
     _ = @import("timeout.zig");
+    _ = @import("tls_connect.zig");
 }

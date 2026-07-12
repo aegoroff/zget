@@ -5,6 +5,9 @@ const build_options = @import("build_options");
 const proxy = @import("proxy.zig");
 
 const timeout = @import("timeout.zig");
+const tls_connect = @import("tls_connect.zig");
+
+const HostName = std.Io.net.HostName;
 
 const MAX_REDIRECTS = 10;
 const DEFAULT_REDIRECT_BEHAVIOR = http.Client.Request.RedirectBehavior.init(MAX_REDIRECTS);
@@ -15,12 +18,14 @@ http_client: std.http.Client,
 extra_headers: std.ArrayList(http.Header),
 proxy_config: proxy.Config,
 io_timeout: std.Io.Timeout,
+no_check_certificate: bool,
 
 pub fn init(
     gpa: std.mem.Allocator,
     io: std.Io,
     proxy_config: proxy.Config,
     timeout_seconds: ?u32,
+    no_check_certificate: bool,
 ) Transport {
     var http_client = std.http.Client{
         .allocator = gpa,
@@ -39,6 +44,7 @@ pub fn init(
         .extra_headers = .empty,
         .proxy_config = proxy_config,
         .io_timeout = io_timeout,
+        .no_check_certificate = no_check_certificate,
     };
 }
 
@@ -48,6 +54,9 @@ pub fn deinit(self: *Transport) void {
 }
 
 pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8, warnings: *std.Io.Writer) http.Client.RequestError!http.Client.Request {
+    if (self.no_check_certificate) {
+        tls_connect.warnInsecureTls(warnings);
+    }
     try ensureTlsReady(&self.http_client);
 
     const host = try uri.getHostAlloc(self.gpa);
@@ -58,26 +67,63 @@ pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8, warnings
         self.proxy_config.apply(&self.http_client);
     }
 
-    self.extra_headers.clearRetainingCapacity();
-    var user_agent: http.Client.Request.Headers.Value = .{ .override = DEFAULT_USER_AGENT };
-    for (headers) |s| {
-        if (parseHeader(s)) |header| {
-            if (std.ascii.eqlIgnoreCase(header.name, "user-agent")) {
-                user_agent = .omit;
+    const request_options = blk: {
+        self.extra_headers.clearRetainingCapacity();
+        var user_agent: http.Client.Request.Headers.Value = .{ .override = DEFAULT_USER_AGENT };
+        for (headers) |s| {
+            if (parseHeader(s)) |header| {
+                if (std.ascii.eqlIgnoreCase(header.name, "user-agent")) {
+                    user_agent = .omit;
+                }
+                try self.extra_headers.append(self.gpa, header);
+            } else {
+                warnIgnoredHeader(warnings, s);
             }
-            try self.extra_headers.append(self.gpa, header);
-        } else {
-            warnIgnoredHeader(warnings, s);
         }
+
+        break :blk http.Client.RequestOptions{
+            .redirect_behavior = DEFAULT_REDIRECT_BEHAVIOR,
+            .extra_headers = self.extra_headers.items,
+            .headers = .{
+                .user_agent = user_agent,
+            },
+            .connection = try acquireInsecureConnection(self, uri, host, warnings),
+        };
+    };
+
+    return timeout.requestWithConnectTimeout(&self.http_client, .GET, uri, request_options, self.io_timeout);
+}
+
+fn acquireInsecureConnection(
+    self: *Transport,
+    uri: std.Uri,
+    host: HostName,
+    warnings: *std.Io.Writer,
+) http.Client.RequestError!?*http.Client.Connection {
+    if (!self.no_check_certificate) return null;
+
+    const protocol = http.Client.Protocol.fromUri(uri) orelse return null;
+    if (protocol != .tls) return null;
+
+    if (self.http_client.https_proxy != null or self.http_client.http_proxy != null) {
+        tls_connect.warnProxyInsecureUnsupported(warnings);
+        return null;
     }
 
-    return timeout.requestWithConnectTimeout(&self.http_client, .GET, uri, .{
-        .redirect_behavior = DEFAULT_REDIRECT_BEHAVIOR,
-        .extra_headers = self.extra_headers.items,
-        .headers = .{
-            .user_agent = user_agent,
-        },
-    }, self.io_timeout);
+    const port: u16 = uri.port orelse switch (protocol) {
+        .plain => 80,
+        .tls => 443,
+    };
+    const stream = try host.connect(self.http_client.io, port, .{ .mode = .stream });
+    errdefer stream.close(self.http_client.io);
+
+    return tls_connect.createTlsConnection(
+        &self.http_client,
+        host,
+        port,
+        stream,
+        .insecure,
+    );
 }
 
 fn ensureTlsReady(client: *http.Client) !void {
