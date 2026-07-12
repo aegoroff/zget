@@ -66,6 +66,8 @@ pub fn message(err: anyerror) ?[]const u8 {
 }
 
 pub fn report(stderr: *std.Io.Writer, err: anyerror) void {
+    if (err == error.ChecksumMismatch) return;
+
     if (message(err)) |text| {
         stderr.print("error: {s}\n", .{text}) catch {};
     } else {
@@ -86,6 +88,13 @@ test "message maps network errors" {
         "Connection refused",
         message(error.ConnectionRefused).?,
     );
+}
+
+test "report is silent for checksum mismatch" {
+    var buffer: [128]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    report(&writer, error.ChecksumMismatch);
+    try std.testing.expectEqualStrings("", writer.buffered());
 }
 
 test "message returns null for unknown errors" {

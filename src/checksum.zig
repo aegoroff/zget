@@ -99,7 +99,7 @@ pub const Stream = struct {
         if (self.options.expected) |expected| {
             if (!std.mem.eql(u8, &expected, &digest)) {
                 if (warnings) |warn_writer| warnMismatch(warn_writer, alg, expected, digest);
-                return error.ChecksumMismatch;
+                return errors.ZgetError.ChecksumMismatch;
             }
         }
 
