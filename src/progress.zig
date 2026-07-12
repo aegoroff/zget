@@ -5,6 +5,11 @@ pub fn percent(comptime T: type, completed: T, total: T) usize {
     return @intFromFloat(v * 100);
 }
 
+fn rootProgressItems(read_bytes: usize, content_size_bytes: usize) ?usize {
+    if (content_size_bytes == 0) return null;
+    return percent(usize, read_bytes, content_size_bytes);
+}
+
 fn div(comptime T: type, completed: T, total: T) f32 {
     const x = @as(f32, @floatFromInt(completed));
     const y = @as(f32, @floatFromInt(total));
@@ -26,8 +31,12 @@ pub const Tracker = struct {
     read_bytes: usize = 0,
 
     pub fn start(io: std.Io, content_size_bytes: u64) Tracker {
-        var root = std.Progress.start(io, .{ .root_name = "%", .estimated_total_items = 100 });
-        const bytes = root.start("bytes", @intCast(content_size_bytes));
+        const has_known_size = content_size_bytes > 0;
+        var root = std.Progress.start(io, .{
+            .root_name = if (has_known_size) "%" else "",
+            .estimated_total_items = if (has_known_size) 100 else 0,
+        });
+        const bytes = root.start("bytes", if (has_known_size) @intCast(content_size_bytes) else 0);
         const speed = root.start(MIBS_PER_SEC, 0);
         return .{
             .root = root,
@@ -65,7 +74,9 @@ pub const Tracker = struct {
             self.speed.setCompletedItems(@intCast(speed));
         }
 
-        self.root.setCompletedItems(percent(usize, self.read_bytes, content_size_bytes));
+        if (rootProgressItems(self.read_bytes, content_size_bytes)) |items| {
+            self.root.setCompletedItems(items);
+        }
         self.bytes.setCompletedItems(self.read_bytes);
     }
 
@@ -89,6 +100,11 @@ pub const Tracker = struct {
 test "percent 0" {
     const expected: usize = 0;
     try std.testing.expectEqual(expected, percent(usize, 10, 0));
+}
+
+test "rootProgressItems skips unknown content size" {
+    try std.testing.expect(rootProgressItems(100, 0) == null);
+    try std.testing.expectEqual(@as(usize, 10), rootProgressItems(100, 1000).?);
 }
 
 test "percent 1" {
