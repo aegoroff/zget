@@ -33,7 +33,7 @@ pub fn deinit(self: *Transport) void {
     self.http_client.deinit();
 }
 
-pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8) http.Client.RequestError!http.Client.Request {
+pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8, warnings: *std.Io.Writer) http.Client.RequestError!http.Client.Request {
     try ensureTlsReady(&self.http_client);
 
     const host = try uri.getHostAlloc(self.gpa);
@@ -52,6 +52,8 @@ pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8) http.Cli
                 user_agent = .omit;
             }
             try self.extra_headers.append(self.gpa, header);
+        } else {
+            warnIgnoredHeader(warnings, s);
         }
     }
 
@@ -93,6 +95,17 @@ fn parseHeader(raw: []const u8) ?http.Header {
     const value = std.mem.trim(u8, raw[colon + 1 ..], " ");
     if (name.len == 0 or value.len == 0) return null;
     return .{ .name = name, .value = value };
+}
+
+pub fn warnIgnoredHeader(writer: *std.Io.Writer, raw: []const u8) void {
+    writer.print("warning: ignoring malformed header: {s}\n", .{raw}) catch {};
+}
+
+test "warnIgnoredHeader writes warning" {
+    var buffer: [128]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    warnIgnoredHeader(&writer, "BadHeader");
+    try std.testing.expectEqualStrings("warning: ignoring malformed header: BadHeader\n", writer.buffered());
 }
 
 test "parseHeader simple" {

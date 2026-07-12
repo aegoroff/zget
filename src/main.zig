@@ -57,7 +57,7 @@ fn executeDownload(
     const proxy_config = try proxy.Config.init(gpa, init.environ_map, args.proxy);
     var client = transport.Transport.init(gpa, init.io, proxy_config);
     defer client.deinit();
-    var req = try client.get(args.uri, args.headers);
+    var req = try client.get(args.uri, args.headers, stderr);
     defer req.deinit();
 
     try req.sendBodiless();
