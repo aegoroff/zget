@@ -110,7 +110,7 @@ Key behaviors to preserve when changing code:
 - `--timeout SECONDS` applies connect, response-header, and body-read timeouts via `timeout.zig` (`Io.Select`, not socket `SO_RCVTIMEO`).
 - `--no-check-certificate` skips TLS CA chain verification on direct HTTPS only (`tls_connect.zig`); hostname is still verified. Proxied HTTPS and redirect follow-up connections use normal verification.
 - `-q` / `--quiet` suppresses URI/content metadata, progress, summary stats, stream retry messages, and warnings; fatal errors still go to stderr via `errors.report()`.
-- `--checksum=sha256` hashes decompressed output bytes via `std.Io.Writer.hashed` and prints `SHA256: <hex>` to the summary stream; with `-q`, checksum is not computed or printed.
+- `--checksum=sha256` / `--checksum=blake3` hashes decompressed output bytes via `std.Io.Writer.hashed` and prints `SHA256:` / `BLAKE3:` hex digests to the summary stream; with `-q`, checksum is not computed or printed.
 - Malformed `-H` values are ignored with a stderr warning (`transport.warnIgnoredHeader`), unless `-q` is set.
 - Proxy env vars are matched case-insensitively; if `https_proxy` is unset, `http_proxy` is reused.
 - `main` uses `init.arena.allocator()` — streaming buffers are allocated from the arena, not the stack.

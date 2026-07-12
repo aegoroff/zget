@@ -26,7 +26,7 @@ pub fn message(err: anyerror) ?[]const u8 {
         error.TlsInitializationFailed => "TLS initialization failed",
         error.InvalidTimeout => "Timeout must be a positive number of seconds",
         error.InvalidMaxRedirects => "Max redirects must be a number from 0 to 65534",
-        error.InvalidChecksum => "Unsupported checksum type (only sha256 is supported)",
+        error.InvalidChecksum => "Unsupported checksum type (only sha256 and blake3 are supported)",
 
         error.ConnectionRefused => "Connection refused",
         error.Timeout => "Connection timed out",
