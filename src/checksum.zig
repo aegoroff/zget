@@ -99,6 +99,7 @@ pub const Stream = struct {
         if (self.options.expected) |expected| {
             if (!std.mem.eql(u8, &expected, &digest)) {
                 if (warnings) |warn_writer| warnMismatch(warn_writer, alg, expected, digest);
+                return error.ChecksumMismatch;
             }
         }
 
@@ -257,15 +258,33 @@ test "Stream validates digest and warns on mismatch" {
     var stream = Stream.init(&dest, hash_buf[0..], .{
         .algorithm = .sha256,
         .expected = expected,
-        .quiet = true,
     });
     try stream.writer().writeAll("abc");
-    try stream.finish(&summary, &warnings);
+    try std.testing.expectError(error.ChecksumMismatch, stream.finish(&summary, &warnings));
 
     try std.testing.expect(std.mem.startsWith(u8, warnings.buffered(), "warning: SHA256 checksum mismatch"));
 }
 
-test "Stream validates digest quietly without printing checksum" {
+test "Stream validates digest quietly and fails without output on mismatch" {
+    var dest_buffer: [64]u8 = undefined;
+    var dest = std.Io.Writer.fixed(&dest_buffer);
+    var summary_buffer: [128]u8 = undefined;
+    var summary = std.Io.Writer.fixed(&summary_buffer);
+    var hash_buf: [hash_buf_len]u8 = undefined;
+
+    const expected = [_]u8{0} ** 32;
+    var stream = Stream.init(&dest, hash_buf[0..], .{
+        .algorithm = .sha256,
+        .expected = expected,
+        .quiet = true,
+    });
+    try stream.writer().writeAll("abc");
+    try std.testing.expectError(error.ChecksumMismatch, stream.finish(&summary, null));
+
+    try std.testing.expectEqualStrings("", summary.buffered());
+}
+
+test "Stream validates matching digest quietly without output" {
     var dest_buffer: [64]u8 = undefined;
     var dest = std.Io.Writer.fixed(&dest_buffer);
     var summary_buffer: [128]u8 = undefined;

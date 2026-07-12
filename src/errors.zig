@@ -14,6 +14,7 @@ pub const ZgetError = error{
     InvalidChecksum,
     InvalidValidateDigest,
     ValidateRequiresChecksum,
+    ChecksumMismatch,
 };
 
 pub fn message(err: anyerror) ?[]const u8 {
@@ -31,6 +32,7 @@ pub fn message(err: anyerror) ?[]const u8 {
         error.InvalidChecksum => "Unsupported checksum type (only sha256 and blake3 are supported)",
         error.InvalidValidateDigest => "Validate digest must be 64 hexadecimal characters",
         error.ValidateRequiresChecksum => "--validate requires --checksum",
+        error.ChecksumMismatch => "Downloaded content checksum does not match",
 
         error.ConnectionRefused => "Connection refused",
         error.Timeout => "Connection timed out",

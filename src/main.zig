@@ -10,6 +10,9 @@ const http = std.http;
 
 pub fn main(init: std.process.Init) void {
     run(init) catch |err| {
+        if (err == error.ChecksumMismatch) {
+            std.process.exit(1);
+        }
         var stderr_buffer: [1024]u8 = undefined;
         var stderr_writer = std.Io.File.stderr().writer(init.io, &stderr_buffer);
         errors.report(&stderr_writer.interface, err);

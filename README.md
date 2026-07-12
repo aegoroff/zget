@@ -21,7 +21,7 @@ A non-interactive network retriever implemented in [Zig](https://ziglang.org/) 0
 - `--no-check-certificate` — skip TLS certificate chain verification (direct HTTPS only)
 - `-q` / `--quiet` — suppress progress, summary, and warnings (errors still print on failure)
 - `--checksum=sha256` / `--checksum=blake3` — print digest after transfer (ignored with `-q`, except when `--validate` is set)
-- `--validate <DIGEST>` — compare downloaded content against expected hex digest (requires `--checksum`; warns on mismatch)
+- `--validate <DIGEST>` — compare downloaded content against expected hex digest (requires `--checksum`; warns on mismatch, exit code 1; silent with `-q`)
 - Default `User-Agent: zget/<version>` header
 - Cross-platform builds (Linux, macOS, Windows)
 
@@ -116,7 +116,7 @@ zget -O - https://example.com/file.zip
 | `--no-check-certificate` | Don't verify the peer's TLS certificate chain (direct HTTPS only) |
 | `-q, --quiet` | Quiet (no progress, summary, or warnings) |
 | `--checksum <TYPE>` | Print checksum after download (`sha256`, `blake3`; ignored with `-q` unless `--validate` is set) |
-| `--validate <DIGEST>` | Validate downloaded content against a 64-character hex digest (requires `--checksum`) |
+| `--validate <DIGEST>` | Validate downloaded content against a 64-character hex digest (requires `--checksum`; exit code 1 on mismatch) |
 | `-h, --help` | Print help and exit |
 
 Positional argument: `URI` — the URL to download (`http://` or `https://` only).
