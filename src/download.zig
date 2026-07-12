@@ -258,28 +258,9 @@ pub fn streamToWriter(
     var decompress: http.Decompress = undefined;
     const reader = response.readerDecompressing(read_buf, &decompress, decompress_buf);
 
-    var sha256_hasher: std.crypto.hash.sha2.Sha256 = undefined;
-    var blake3_hasher: std.crypto.hash.Blake3 = undefined;
-    var hash_writer_buf: [READ_BUF_LEN]u8 = undefined;
-    var sha256_writer: ?std.Io.Writer.Hashed(std.crypto.hash.sha2.Sha256) = null;
-    var blake3_writer: ?std.Io.Writer.Hashed(std.crypto.hash.Blake3) = null;
-    const stream_dest: *std.Io.Writer = blk: {
-        if (!quiet and checksum_alg != null) {
-            switch (checksum_alg.?) {
-                .sha256 => {
-                    sha256_hasher = std.crypto.hash.sha2.Sha256.init(.{});
-                    sha256_writer = std.Io.Writer.hashed(dest, sha256_hasher, hash_writer_buf[0..]);
-                    break :blk &sha256_writer.?.writer;
-                },
-                .blake3 => {
-                    blake3_hasher = std.crypto.hash.Blake3.init(.{});
-                    blake3_writer = std.Io.Writer.hashed(dest, blake3_hasher, hash_writer_buf[0..]);
-                    break :blk &blake3_writer.?.writer;
-                },
-            }
-        }
-        break :blk dest;
-    };
+    var hash_writer_buf: [checksum.hash_buf_len]u8 = undefined;
+    var checksum_stream = checksum.Stream.init(dest, hash_writer_buf[0..], quiet, checksum_alg);
+    const stream_dest = checksum_stream.writer();
 
     var tracker: ?progress.Tracker = null;
     if (!quiet) {
@@ -321,18 +302,7 @@ pub fn streamToWriter(
         }
     }
 
-    if (checksum_alg) |alg| {
-        switch (alg) {
-            .sha256 => if (sha256_writer) |*hashing| {
-                try hashing.writer.flush();
-                try checksum.print(summary, .sha256, hashing.hasher.finalResult());
-            },
-            .blake3 => if (blake3_writer) |*hashing| {
-                try hashing.writer.flush();
-                try checksum.print(summary, .blake3, checksum.digestFromBlake3(&hashing.hasher));
-            },
-        }
-    }
+    try checksum_stream.finish(summary);
 }
 
 pub fn streamToFile(
