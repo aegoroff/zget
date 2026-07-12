@@ -158,18 +158,58 @@ pub fn resolveFileName(
     return DEFAULT_FILE_NAME;
 }
 
+fn hasTrailingSeparator(path: []const u8) bool {
+    if (path.len == 0) return false;
+    return std.fs.path.isSep(path[path.len - 1]);
+}
+
+fn trimTrailingSeparators(path: []const u8) []const u8 {
+    var end = path.len;
+    while (end > 0 and std.fs.path.isSep(path[end - 1])) end -= 1;
+    return path[0..end];
+}
+
 fn isExistingDirectory(io: std.Io, path: []const u8) bool {
+    const trimmed = trimTrailingSeparators(path);
+    if (trimmed.len == 0) return false;
+
     var optional_d: ?std.Io.Dir = null;
-    if (std.fs.path.isAbsolute(path)) {
-        optional_d = std.Io.Dir.openDirAbsolute(io, path, .{}) catch null;
+    if (std.fs.path.isAbsolute(trimmed)) {
+        optional_d = std.Io.Dir.openDirAbsolute(io, trimmed, .{}) catch null;
     } else {
-        optional_d = std.Io.Dir.cwd().openDir(io, path, .{}) catch null;
+        optional_d = std.Io.Dir.cwd().openDir(io, trimmed, .{}) catch null;
     }
     if (optional_d) |dir| {
         dir.close(io);
         return true;
     }
     return false;
+}
+
+fn isDirectoryOutput(io: std.Io, path: []const u8) bool {
+    if (hasTrailingSeparator(path)) return true;
+    return isExistingDirectory(io, path);
+}
+
+fn requireExistingDirectory(io: std.Io, path: []const u8) errors.ZgetError![]const u8 {
+    const trimmed = trimTrailingSeparators(path);
+    if (trimmed.len == 0 or !isExistingDirectory(io, path)) {
+        return error.OutputDirectoryNotFound;
+    }
+    return trimmed;
+}
+
+pub fn expandOutputPath(
+    gpa: std.mem.Allocator,
+    environ: *const std.process.Environ.Map,
+    raw: []const u8,
+) ![]const u8 {
+    if (raw.len == 0 or raw[0] != '~') return raw;
+    if (raw.len > 1 and raw[1] != '/') return raw;
+
+    const home = environ.get("HOME") orelse return raw;
+    if (raw.len == 1) return try gpa.dupe(u8, home);
+    return try std.fmt.allocPrint(gpa, "{s}{s}", .{ home, raw[1..] });
 }
 
 pub fn planOutput(
@@ -184,8 +224,9 @@ pub fn planOutput(
 
     if (try fileNameFromUri(gpa, uri)) |file_name| {
         if (output_opt) |output| {
-            if (isExistingDirectory(io, output)) {
-                return .{ .file = try std.fs.path.join(gpa, &[_][]const u8{ output, file_name }) };
+            if (isDirectoryOutput(io, output)) {
+                const directory = try requireExistingDirectory(io, output);
+                return .{ .file = try std.fs.path.join(gpa, &[_][]const u8{ directory, file_name }) };
             }
             return .{ .file = output };
         }
@@ -193,8 +234,9 @@ pub fn planOutput(
     }
 
     if (output_opt) |output| {
-        if (isExistingDirectory(io, output)) {
-            return .{ .pending = .{ .directory = output } };
+        if (isDirectoryOutput(io, output)) {
+            const directory = try requireExistingDirectory(io, output);
+            return .{ .pending = .{ .directory = directory } };
         }
         return .{ .file = output };
     }
@@ -430,6 +472,28 @@ test "planOutput treats missing output path as file name" {
     const plan = try planOutput(std.testing.allocator, std.testing.io, "missing-dir/out.bin", uri);
     try std.testing.expect(plan == .file);
     try std.testing.expectEqualStrings("missing-dir/out.bin", plan.file);
+}
+
+test "planOutput rejects missing directory when output ends with separator" {
+    const uri = try std.Uri.parse("https://example.com/file.txt");
+    try std.testing.expectError(
+        error.OutputDirectoryNotFound,
+        planOutput(std.testing.allocator, std.testing.io, "missing-dir/", uri),
+    );
+}
+
+test "expandOutputPath expands home directory prefix" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const environ = std.process.Environ.empty;
+    var map = try std.process.Environ.createMap(environ, arena);
+    defer map.deinit();
+    try map.put("HOME", "/home/test");
+
+    const expanded = try expandOutputPath(arena, &map, "~/downloads/");
+    try std.testing.expectEqualStrings("/home/test/downloads/", expanded);
 }
 
 test "planOutput joins existing directory with uri filename" {

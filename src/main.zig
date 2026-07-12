@@ -72,7 +72,11 @@ fn executeDownload(
     else
         .none;
 
-    const output_plan = try download.planOutput(gpa, init.io, args.output, args.uri);
+    const output_path = if (args.output) |raw|
+        try download.expandOutputPath(gpa, init.environ_map, raw)
+    else
+        null;
+    const output_plan = try download.planOutput(gpa, init.io, output_path, args.uri);
     // if set -O - (that sets result to stdout like wget) then log to stderr
     const summary_out = if (output_plan == .stdout) stderr else stdout;
     const log = SummaryLog.init(summary_out, stderr, args.quiet);

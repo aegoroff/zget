@@ -15,6 +15,7 @@ pub const ZgetError = error{
     InvalidValidateDigest,
     ValidateRequiresChecksum,
     ChecksumMismatch,
+    OutputDirectoryNotFound,
 };
 
 pub fn message(err: anyerror) ?[]const u8 {
@@ -33,6 +34,7 @@ pub fn message(err: anyerror) ?[]const u8 {
         error.InvalidValidateDigest => "Validate digest must be 64 hexadecimal characters",
         error.ValidateRequiresChecksum => "--validate requires --checksum",
         error.ChecksumMismatch => "Downloaded content checksum does not match",
+        error.OutputDirectoryNotFound => "Output directory does not exist",
 
         error.ConnectionRefused => "Connection refused",
         error.Timeout => "Connection timed out",
