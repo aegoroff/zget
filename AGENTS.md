@@ -26,6 +26,7 @@ src/
   transport.zig   # HTTP client wrapper (GET, headers, redirects, TLS)
   timeout.zig     # Io.Select-based connect, receiveHead, and read timeouts
   tls_connect.zig # Direct HTTPS connections with optional CA verification skip
+  checksum.zig    # Checksum algorithm parsing and digest output
 build.zig         # Build, test, run, archive steps
 build.zig.zon     # Package manifest and yazap dependency
 justfile          # Local build shortcuts (mise + zig)
@@ -86,8 +87,8 @@ main.zig
 
 | Module | Responsibility |
 |--------|----------------|
-| `cli.zig` | yazap app setup, `-H` / `-O` / `-V` / `-q` / `--timeout` / `--no-check-certificate` / `--max-redirect` / proxy flags, URI positional |
-| `download.zig` | Plan and finalize output path, create file, stream decompressed body with retry |
+| `cli.zig` | yazap app setup, `-H` / `-O` / `-V` / `-q` / `--checksum` / `--timeout` / `--no-check-certificate` / `--max-redirect` / proxy flags, URI positional |
+| `download.zig` | Plan and finalize output path, create file, stream decompressed body with retry and optional checksum |
 | `transport.zig` | HTTP client lifecycle (GET, headers, redirects, TLS CA bundle, insecure direct HTTPS) |
 | `timeout.zig` | `Io.Select`-based connect, `receiveHead`, and body-read timeouts |
 | `tls_connect.zig` | Direct HTTPS `connectInsecure()` when `--no-check-certificate` is set |
@@ -109,6 +110,7 @@ Key behaviors to preserve when changing code:
 - `--timeout SECONDS` applies connect, response-header, and body-read timeouts via `timeout.zig` (`Io.Select`, not socket `SO_RCVTIMEO`).
 - `--no-check-certificate` skips TLS CA chain verification on direct HTTPS only (`tls_connect.zig`); hostname is still verified. Proxied HTTPS and redirect follow-up connections use normal verification.
 - `-q` / `--quiet` suppresses URI/content metadata, progress, summary stats, stream retry messages, and warnings; fatal errors still go to stderr via `errors.report()`.
+- `--checksum=sha256` hashes decompressed output bytes via `std.Io.Writer.hashed` and prints `SHA256: <hex>` to the summary stream; with `-q`, checksum is not computed or printed.
 - Malformed `-H` values are ignored with a stderr warning (`transport.warnIgnoredHeader`), unless `-q` is set.
 - Proxy env vars are matched case-insensitively; if `https_proxy` is unset, `http_proxy` is reused.
 - `main` uses `init.arena.allocator()` — streaming buffers are allocated from the arena, not the stack.

@@ -5,6 +5,7 @@ const build_options = @import("build_options");
 
 const errors = @import("errors.zig");
 const proxy = @import("proxy.zig");
+const checksum = @import("checksum.zig");
 
 pub const DEFAULT_MAX_REDIRECTS: u16 = 10;
 
@@ -18,6 +19,7 @@ pub const Args = struct {
     no_check_certificate: bool,
     max_redirects: u16,
     quiet: bool,
+    checksum: ?checksum.Algorithm,
 };
 
 pub const CliResult = union(enum) {
@@ -108,6 +110,13 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     );
     max_redirect_opt.setValuePlaceholder("COUNT");
     max_redirect_opt.setProperty(.takes_value);
+    var checksum_opt = yazap.Arg.singleValueOption(
+        "checksum",
+        null,
+        "Compute checksum of downloaded content",
+    );
+    checksum_opt.setValuePlaceholder("TYPE");
+    checksum_opt.setProperty(.takes_value);
 
     try root_cmd.addArg(headers_opt);
     try root_cmd.addArg(output_opt);
@@ -119,6 +128,7 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     try root_cmd.addArg(timeout_opt);
     try root_cmd.addArg(no_check_certificate_opt);
     try root_cmd.addArg(max_redirect_opt);
+    try root_cmd.addArg(checksum_opt);
     try root_cmd.addArg(uri_opt);
 
     const raw_argv = try init.minimal.args.toSlice(gpa);
@@ -140,6 +150,11 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     else
         DEFAULT_MAX_REDIRECTS;
 
+    const checksum_alg = if (matches.getSingleValue("checksum")) |value|
+        try checksum.parse(value)
+    else
+        null;
+
     return .{ .run = .{
         .uri_source = source,
         .uri = uri,
@@ -154,6 +169,7 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
         .no_check_certificate = matches.containsArg("no-check-certificate"),
         .max_redirects = max_redirects,
         .quiet = matches.containsArg("quiet"),
+        .checksum = checksum_alg,
     } };
 }
 

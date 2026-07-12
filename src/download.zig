@@ -3,6 +3,7 @@ const http = std.http;
 const errors = @import("errors.zig");
 const progress = @import("progress.zig");
 const timeout = @import("timeout.zig");
+const checksum = @import("checksum.zig");
 
 const READ_BUF_LEN = 16 * 4096;
 const MAX_ERRORS: i16 = 10;
@@ -241,6 +242,7 @@ pub fn streamToWriter(
     content_size_bytes: u64,
     read_timeout: std.Io.Timeout,
     quiet: bool,
+    checksum_alg: ?checksum.Algorithm,
 ) !void {
     const read_buf = try gpa.alloc(u8, READ_BUF_LEN);
 
@@ -256,6 +258,22 @@ pub fn streamToWriter(
     var decompress: http.Decompress = undefined;
     const reader = response.readerDecompressing(read_buf, &decompress, decompress_buf);
 
+    var sha256_hasher: std.crypto.hash.sha2.Sha256 = undefined;
+    var hash_writer_buf: [READ_BUF_LEN]u8 = undefined;
+    var sha256_writer: ?std.Io.Writer.Hashed(std.crypto.hash.sha2.Sha256) = null;
+    const stream_dest: *std.Io.Writer = blk: {
+        if (!quiet and checksum_alg != null) {
+            switch (checksum_alg.?) {
+                .sha256 => {
+                    sha256_hasher = std.crypto.hash.sha2.Sha256.init(.{});
+                    sha256_writer = std.Io.Writer.hashed(dest, sha256_hasher, hash_writer_buf[0..]);
+                    break :blk &sha256_writer.?.writer;
+                },
+            }
+        }
+        break :blk dest;
+    };
+
     var tracker: ?progress.Tracker = null;
     if (!quiet) {
         tracker = progress.Tracker.start(io, content_size_bytes);
@@ -267,7 +285,7 @@ pub fn streamToWriter(
 
     var read_errors: i16 = 0;
     while (true) {
-        const read = timeout.streamWithIdleTimeout(io, reader, dest, READ_BUF_LEN, read_timeout) catch |err| {
+        const read = timeout.streamWithIdleTimeout(io, reader, stream_dest, READ_BUF_LEN, read_timeout) catch |err| {
             switch (err) {
                 error.EndOfStream => break,
                 error.Timeout => return err,
@@ -295,6 +313,11 @@ pub fn streamToWriter(
             t.record(io, read, @intCast(content_size_bytes));
         }
     }
+
+    if (sha256_writer) |*hashing| {
+        try hashing.writer.flush();
+        try checksum.printSha256(summary, hashing.hasher.finalResult());
+    }
 }
 
 pub fn streamToFile(
@@ -306,6 +329,7 @@ pub fn streamToFile(
     content_size_bytes: u64,
     read_timeout: std.Io.Timeout,
     quiet: bool,
+    checksum_alg: ?checksum.Algorithm,
 ) !void {
     const file_buffer = try gpa.alloc(u8, READ_BUF_LEN);
     var file_writer = file.writer(io, file_buffer);
@@ -314,7 +338,7 @@ pub fn streamToFile(
         file_interface.flush() catch {};
     }
 
-    try streamToWriter(io, gpa, summary, response, file_interface, content_size_bytes, read_timeout, quiet);
+    try streamToWriter(io, gpa, summary, response, file_interface, content_size_bytes, read_timeout, quiet, checksum_alg);
 }
 
 test "afterStreamReadError retries until limit" {

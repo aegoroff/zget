@@ -20,6 +20,7 @@ A non-interactive network retriever implemented in [Zig](https://ziglang.org/) 0
 - `--timeout` — connection and read timeout in seconds
 - `--no-check-certificate` — skip TLS certificate chain verification (direct HTTPS only)
 - `-q` / `--quiet` — suppress progress, summary, and warnings (errors still print on failure)
+- `--checksum=sha256` — print SHA-256 digest after transfer (ignored with `-q`)
 - Default `User-Agent: zget/<version>` header
 - Cross-platform builds (Linux, macOS, Windows)
 
@@ -113,6 +114,7 @@ zget -O - https://example.com/file.zip
 | `--max-redirect <COUNT>` | Maximum number of HTTP redirects to follow (default: 10) |
 | `--no-check-certificate` | Don't verify the peer's TLS certificate chain (direct HTTPS only) |
 | `-q, --quiet` | Quiet (no progress, summary, or warnings) |
+| `--checksum <TYPE>` | Print checksum after download (`sha256`; ignored with `-q`) |
 | `-h, --help` | Print help and exit |
 
 Positional argument: `URI` — the URL to download (`http://` or `https://` only).

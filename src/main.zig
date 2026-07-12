@@ -121,6 +121,7 @@ fn executeDownload(
             content_size_bytes,
             io_timeout,
             args.quiet,
+            args.checksum,
         ),
         .file => |target| {
             var file = try download.createFile(init.io, target);
@@ -135,6 +136,7 @@ fn executeDownload(
                 content_size_bytes,
                 io_timeout,
                 args.quiet,
+                args.checksum,
             );
         },
     }
@@ -149,5 +151,6 @@ test {
     _ = @import("proxy.zig");
     _ = @import("transport.zig");
     _ = @import("timeout.zig");
+    _ = @import("checksum.zig");
     _ = @import("tls_connect.zig");
 }
