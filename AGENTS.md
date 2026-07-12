@@ -23,9 +23,8 @@ src/
   progress.zig    # Progress bar, speed display, summary stats
   errors.zig      # ZgetError set and user-facing error messages
   proxy.zig       # Proxy and no_proxy configuration from env/CLI
-  transport.zig   # HTTP client wrapper (GET, headers, redirects, TLS)
+  transport.zig   # HTTP client wrapper (GET, headers, redirects, TLS, insecure connect)
   timeout.zig     # Io.Select-based connect, receiveHead, and read timeouts
-  tls_connect.zig # Direct HTTPS connections with optional CA verification skip
   checksum.zig    # Checksum algorithm parsing and digest output
 build.zig         # Build, test, run, archive steps
 build.zig.zon     # Package manifest and yazap dependency
@@ -92,7 +91,6 @@ main.zig
 | `download.zig` | Plan and finalize output path, create file, stream decompressed body with retry |
 | `transport.zig` | HTTP client lifecycle (GET, headers, redirects, TLS CA bundle, insecure direct HTTPS) |
 | `timeout.zig` | `Io.Select`-based connect, `receiveHead`, and body-read timeouts |
-| `tls_connect.zig` | Direct HTTPS `connectInsecure()` when `--no-check-certificate` is set |
 | `proxy.zig` | Read `http_proxy` / `https_proxy` / `no_proxy` (case-insensitive), apply to client |
 | `progress.zig` | `std.Progress` UI, speed, final summary |
 | `errors.zig` | `ZgetError` and `message()` / `report()` for readable stderr errors |
@@ -109,7 +107,7 @@ Key behaviors to preserve when changing code:
 - Stream read/write errors are retried up to 10 times, then propagated (non-zero exit code).
 - Redirects are enabled via `redirect_behavior` in `transport.zig`; `--max-redirect` sets the limit (default: `cli.DEFAULT_MAX_REDIRECTS`, 10).
 - `--timeout SECONDS` applies connect, response-header, and body-read timeouts via `timeout.zig` (`Io.Select`, not socket `SO_RCVTIMEO`).
-- `--no-check-certificate` skips TLS CA chain verification on direct HTTPS only (`tls_connect.zig`); hostname is still verified. Proxied HTTPS and redirect follow-up connections use normal verification.
+- `--no-check-certificate` skips TLS CA chain verification on direct HTTPS only (`transport.zig`); hostname is still verified. Proxied HTTPS and redirect follow-up connections use normal verification.
 - `-q` / `--quiet` suppresses URI/content metadata, progress, summary stats, stream retry messages, and warnings; fatal errors still go to stderr via `errors.report()`.
 - `--checksum=sha256` / `--checksum=blake3` hashes decompressed output bytes in `checksum.Stream` via `std.Io.Writer.hashed` and prints `SHA256:` / `BLAKE3:` hex digests to the summary stream; with `-q`, checksum is not computed or printed unless `--validate` is set.
 - `--validate DIGEST` compares the computed digest against 64 hex characters; warns on stderr when not quiet, exits with code 1 on mismatch without printing in quiet mode.

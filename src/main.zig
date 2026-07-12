@@ -73,11 +73,6 @@ fn executeDownload(
     stderr: *std.Io.Writer,
     args: cli.Args,
 ) !void {
-    const io_timeout: std.Io.Timeout = if (args.timeout_seconds) |seconds|
-        timeout.fromSeconds(seconds)
-    else
-        .none;
-
     const output_path = if (args.output) |raw|
         try download.expandOutputPath(gpa, init.environ_map, raw)
     else
@@ -110,7 +105,7 @@ fn executeDownload(
         init.io,
         &req,
         header_buffer.items,
-        io_timeout,
+        client.io_timeout,
     );
 
     const content_type = response.head.content_type orelse "text/plain";
@@ -147,7 +142,7 @@ fn executeDownload(
             &response,
             stdout,
             content_size_bytes,
-            io_timeout,
+            client.io_timeout,
             checksum_opts,
             log.warnings,
         ),
@@ -162,7 +157,7 @@ fn executeDownload(
                 &response,
                 &file,
                 content_size_bytes,
-                io_timeout,
+                client.io_timeout,
                 checksum_opts,
                 log.warnings,
             );
@@ -180,5 +175,4 @@ test {
     _ = @import("transport.zig");
     _ = @import("timeout.zig");
     _ = @import("checksum.zig");
-    _ = @import("tls_connect.zig");
 }

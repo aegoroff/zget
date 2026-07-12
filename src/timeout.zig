@@ -1,9 +1,7 @@
 const std = @import("std");
 const http = std.http;
-const tls_connect = @import("tls_connect.zig");
 
 const Io = std.Io;
-const HostName = std.Io.net.HostName;
 
 pub fn fromSeconds(seconds: u32) Io.Timeout {
     return .{
@@ -16,38 +14,6 @@ pub fn fromSeconds(seconds: u32) Io.Timeout {
 
 fn sleepForTimeout(io: Io, timeout: Io.Timeout) void {
     Io.Timeout.sleep(timeout, io) catch {};
-}
-
-pub fn insecureTlsConnectionWithTimeout(
-    http_client: *http.Client,
-    host: HostName,
-    port: u16,
-    timeout: Io.Timeout,
-) (http.Client.ConnectTcpError || error{Timeout})!*http.Client.Connection {
-    if (timeout == .none) return tls_connect.createInsecureConnection(http_client, host, port);
-
-    const io = http_client.io;
-    const SelectResult = union(enum) {
-        ready: http.Client.ConnectTcpError!*http.Client.Connection,
-        expired: void,
-    };
-
-    var select_buffer: [2]SelectResult = undefined;
-    var select = Io.Select(SelectResult).init(io, &select_buffer);
-    select.async(.ready, tls_connect.createInsecureConnection, .{ http_client, host, port });
-    select.async(.expired, sleepForTimeout, .{ io, timeout });
-
-    const first = try select.await();
-    switch (first) {
-        .ready => |result| {
-            select.cancelDiscard();
-            return try result;
-        },
-        .expired => {
-            _ = select.cancel();
-            return error.Timeout;
-        },
-    }
 }
 
 pub fn requestWithConnectTimeout(
