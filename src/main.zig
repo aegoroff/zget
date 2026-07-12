@@ -112,7 +112,7 @@ fn executeDownload(
     }
 
     const content_size_bytes = response.head.content_length orelse 0;
-    if (content_size_bytes > 0) {
+    if (content_size_bytes > 0 and response.head.content_encoding == .identity) {
         try log.print("Content-size: {0Bi:.2} ({0} bytes)\n", .{content_size_bytes});
     }
 

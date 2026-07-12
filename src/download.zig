@@ -19,6 +19,11 @@ fn afterStreamReadError(read_errors: i16) AfterStreamReadError {
     return .fail;
 }
 
+fn progressTotalBytes(content_length: u64, encoding: http.ContentEncoding) u64 {
+    if (encoding != .identity) return 0;
+    return content_length;
+}
+
 pub const OutputTarget = union(enum) {
     stdout,
     file: []const u8,
@@ -262,9 +267,11 @@ pub fn streamToWriter(
     var checksum_stream = checksum.Stream.init(dest, hash_writer_buf[0..], checksum_opts);
     const stream_dest = checksum_stream.writer();
 
+    const progress_total_bytes = progressTotalBytes(content_size_bytes, encoding);
+
     var tracker: ?progress.Tracker = null;
     if (!checksum_opts.quiet) {
-        tracker = progress.Tracker.start(io, content_size_bytes);
+        tracker = progress.Tracker.start(io, progress_total_bytes);
     }
     defer if (tracker) |*t| {
         t.printSummary(io, summary);
@@ -281,7 +288,7 @@ pub fn streamToWriter(
                     if (response.request.connection) |conn| {
                         if (conn.stream_reader.err) |stream_err| return stream_err;
                     }
-                    return response.bodyErr().?;
+                    return response.bodyErr() orelse error.ReadFailed;
                 },
                 else => |e| {
                     if (!checksum_opts.quiet) {
@@ -298,7 +305,7 @@ pub fn streamToWriter(
             }
         };
         if (tracker) |*t| {
-            t.record(io, read, @intCast(content_size_bytes));
+            t.record(io, read, @intCast(progress_total_bytes));
         }
     }
 
@@ -340,6 +347,11 @@ test "afterStreamReadError retries until limit" {
     try std.testing.expect(afterStreamReadError(0) == .retry);
     try std.testing.expect(afterStreamReadError(MAX_ERRORS - 1) == .retry);
     try std.testing.expect(afterStreamReadError(MAX_ERRORS) == .fail);
+}
+
+test "progressTotalBytes ignores compressed content length" {
+    try std.testing.expectEqual(@as(u64, 0), progressTotalBytes(1024, .gzip));
+    try std.testing.expectEqual(@as(u64, 1024), progressTotalBytes(1024, .identity));
 }
 
 test "fileNameFromUri rejects directory paths" {

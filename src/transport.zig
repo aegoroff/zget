@@ -115,15 +115,11 @@ fn acquireInsecureConnection(
         .plain => 80,
         .tls => 443,
     };
-    const stream = try host.connect(self.http_client.io, port, .{ .mode = .stream });
-    errdefer stream.close(self.http_client.io);
-
-    return tls_connect.createTlsConnection(
+    return timeout.insecureTlsConnectionWithTimeout(
         &self.http_client,
         host,
         port,
-        stream,
-        .insecure,
+        self.io_timeout,
     );
 }
 

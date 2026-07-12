@@ -60,6 +60,17 @@ fn allocLen(http_client: *http.Client, host_len: usize) usize {
         http_client.write_buffer_size + http_client.tls_buffer_size;
 }
 
+pub fn createInsecureConnection(
+    http_client: *http.Client,
+    remote_host: HostName,
+    port: u16,
+) http.Client.ConnectTcpError!*http.Client.Connection {
+    const io = http_client.io;
+    const stream = try remote_host.connect(io, port, .{ .mode = .stream });
+    errdefer stream.close(io);
+    return createTlsConnection(http_client, remote_host, port, stream, .insecure);
+}
+
 pub fn createTlsConnection(
     http_client: *http.Client,
     remote_host: HostName,
