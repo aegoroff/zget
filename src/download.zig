@@ -362,6 +362,95 @@ test "resolveFileName decodes filename star" {
     try std.testing.expectEqualStrings("report final.pdf", name);
 }
 
+test "planOutput uses uri filename in current directory" {
+    const uri = try std.Uri.parse("https://example.com/data.json");
+    const plan = try planOutput(std.testing.allocator, std.testing.io, null, uri);
+    try std.testing.expect(plan == .file);
+    try std.testing.expectEqualStrings("data.json", plan.file);
+}
+
+test "planOutput uses explicit output over uri filename" {
+    const uri = try std.Uri.parse("https://example.com/data.json");
+    const plan = try planOutput(std.testing.allocator, std.testing.io, "custom.bin", uri);
+    try std.testing.expect(plan == .file);
+    try std.testing.expectEqualStrings("custom.bin", plan.file);
+}
+
+test "planOutput treats missing output path as file name" {
+    const uri = try std.Uri.parse("https://example.com/file.txt");
+    const plan = try planOutput(std.testing.allocator, std.testing.io, "missing-dir/out.bin", uri);
+    try std.testing.expect(plan == .file);
+    try std.testing.expectEqualStrings("missing-dir/out.bin", plan.file);
+}
+
+test "planOutput joins existing directory with uri filename" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    var dir_path_buffer: [128]u8 = undefined;
+    const dir_path = try std.fmt.bufPrint(&dir_path_buffer, ".zig-cache/tmp/{s}", .{&tmp.sub_path});
+
+    const uri = try std.Uri.parse("https://example.com/archive.tar.gz");
+    const plan = try planOutput(arena, std.testing.io, dir_path, uri);
+    try std.testing.expect(plan == .file);
+    try std.testing.expect(std.mem.endsWith(u8, plan.file, "archive.tar.gz"));
+    try std.testing.expect(std.mem.startsWith(u8, plan.file, dir_path));
+}
+
+test "planOutput pending when output is existing directory and uri has no filename" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var dir_path_buffer: [128]u8 = undefined;
+    const dir_path = try std.fmt.bufPrint(&dir_path_buffer, ".zig-cache/tmp/{s}", .{&tmp.sub_path});
+
+    const uri = try std.Uri.parse("https://example.com/");
+    const plan = try planOutput(std.testing.allocator, std.testing.io, dir_path, uri);
+    try std.testing.expect(plan == .pending);
+    try std.testing.expectEqualStrings(dir_path, plan.pending.directory.?);
+}
+
+test "finalizePendingOutput joins directory with content disposition filename" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    var dir_path_buffer: [128]u8 = undefined;
+    const dir_path = try std.fmt.bufPrint(&dir_path_buffer, ".zig-cache/tmp/{s}", .{&tmp.sub_path});
+
+    const uri = try std.Uri.parse("https://example.com/");
+    const disposition = "attachment; filename=\"pkg.zip\"";
+    const path = try finalizePendingOutput(arena, .{ .directory = dir_path }, uri, disposition);
+    try std.testing.expect(std.mem.endsWith(u8, path, "pkg.zip"));
+    try std.testing.expect(std.mem.startsWith(u8, path, dir_path));
+}
+
+test "outputTargetFromPlan resolves pending directory output" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    var dir_path_buffer: [128]u8 = undefined;
+    const dir_path = try std.fmt.bufPrint(&dir_path_buffer, ".zig-cache/tmp/{s}", .{&tmp.sub_path});
+
+    const uri = try std.Uri.parse("https://example.com/");
+    const plan = try planOutput(arena, std.testing.io, dir_path, uri);
+    const target = try outputTargetFromPlan(arena, plan, uri, null);
+    try std.testing.expect(target == .file);
+    try std.testing.expect(std.mem.endsWith(u8, target.file, DEFAULT_FILE_NAME));
+    try std.testing.expect(std.mem.startsWith(u8, target.file, dir_path));
+}
+
 test "planOutput stdout for -O -" {
     const uri = try std.Uri.parse("https://example.com/file.txt");
     const plan = try planOutput(std.testing.allocator, std.testing.io, "-", uri);
