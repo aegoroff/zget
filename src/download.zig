@@ -289,8 +289,8 @@ pub fn streamToFile(
     file: *std.Io.File,
     content_size_bytes: u64,
 ) !void {
-    var file_buffer: [READ_BUF_LEN]u8 = undefined;
-    var file_writer = file.writer(io, &file_buffer);
+    const file_buffer = try gpa.alloc(u8, READ_BUF_LEN);
+    var file_writer = file.writer(io, file_buffer);
     const file_interface = &file_writer.interface;
     defer {
         file_interface.flush() catch {};
