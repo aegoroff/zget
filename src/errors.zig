@@ -1,7 +1,6 @@
 const std = @import("std");
 
 pub const ZgetError = error{
-    ResultFileNotSet,
     HttpError,
     EmptyProxyUrl,
     UnsupportedProxyScheme,
@@ -15,7 +14,6 @@ pub const ZgetError = error{
 
 pub fn message(err: anyerror) ?[]const u8 {
     return switch (err) {
-        error.ResultFileNotSet => "Could not determine output filename; use -O to specify a path",
         error.HttpError => "HTTP request failed",
         error.EmptyProxyUrl => "Proxy URL is empty",
         error.UnsupportedProxyScheme => "Unsupported proxy scheme (only http and https are supported)",
