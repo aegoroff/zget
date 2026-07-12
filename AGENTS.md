@@ -86,7 +86,7 @@ main.zig
 
 | Module | Responsibility |
 |--------|----------------|
-| `cli.zig` | yazap app setup, `-H` / `-O` / `-V` / `--timeout` / `--no-check-certificate` / `--max-redirect` / proxy flags, URI positional |
+| `cli.zig` | yazap app setup, `-H` / `-O` / `-V` / `-q` / `--timeout` / `--no-check-certificate` / `--max-redirect` / proxy flags, URI positional |
 | `download.zig` | Plan and finalize output path, create file, stream decompressed body with retry |
 | `transport.zig` | HTTP client lifecycle (GET, headers, redirects, TLS CA bundle, insecure direct HTTPS) |
 | `timeout.zig` | `Io.Select`-based connect, `receiveHead`, and body-read timeouts |
@@ -102,13 +102,14 @@ Key behaviors to preserve when changing code:
 - `-O -` writes the body to stdout; status and progress go to stderr.
 - `-O` pointing to an existing directory appends the filename from the URL path (percent-decoded).
 - If the URL has no usable basename, the output filename is resolved after response headers from `Content-Disposition`, falling back to `index.html`.
-- Non-200 responses return `ZgetError.HttpError` after printing the status.
+- Non-200 responses return `ZgetError.HttpError` after printing the status (unless `-q`).
 - Response bodies are decompressed via `readerDecompressing()` when `Content-Encoding` is set.
 - Stream read/write errors are retried up to 10 times, then propagated (non-zero exit code).
 - Redirects are enabled via `redirect_behavior` in `transport.zig`; `--max-redirect` sets the limit (default: `cli.DEFAULT_MAX_REDIRECTS`, 10).
 - `--timeout SECONDS` applies connect, response-header, and body-read timeouts via `timeout.zig` (`Io.Select`, not socket `SO_RCVTIMEO`).
 - `--no-check-certificate` skips TLS CA chain verification on direct HTTPS only (`tls_connect.zig`); hostname is still verified. Proxied HTTPS and redirect follow-up connections use normal verification.
-- Malformed `-H` values are ignored with a stderr warning (`transport.warnIgnoredHeader`).
+- `-q` / `--quiet` suppresses URI/content metadata, progress, summary stats, stream retry messages, and warnings; fatal errors still go to stderr via `errors.report()`.
+- Malformed `-H` values are ignored with a stderr warning (`transport.warnIgnoredHeader`), unless `-q` is set.
 - Proxy env vars are matched case-insensitively; if `https_proxy` is unset, `http_proxy` is reused.
 - `main` uses `init.arena.allocator()` — streaming buffers are allocated from the arena, not the stack.
 - Failures are reported through `errors.report()` on stderr without Zig stack traces.

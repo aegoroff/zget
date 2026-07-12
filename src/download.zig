@@ -240,6 +240,7 @@ pub fn streamToWriter(
     dest: *std.Io.Writer,
     content_size_bytes: u64,
     read_timeout: std.Io.Timeout,
+    quiet: bool,
 ) !void {
     const read_buf = try gpa.alloc(u8, READ_BUF_LEN);
 
@@ -255,11 +256,14 @@ pub fn streamToWriter(
     var decompress: http.Decompress = undefined;
     const reader = response.readerDecompressing(read_buf, &decompress, decompress_buf);
 
-    var tracker = progress.Tracker.start(io, content_size_bytes);
-    defer {
-        tracker.printSummary(io, summary);
-        tracker.end();
+    var tracker: ?progress.Tracker = null;
+    if (!quiet) {
+        tracker = progress.Tracker.start(io, content_size_bytes);
     }
+    defer if (tracker) |*t| {
+        t.printSummary(io, summary);
+        t.end();
+    };
 
     var read_errors: i16 = 0;
     while (true) {
@@ -274,7 +278,9 @@ pub fn streamToWriter(
                     return response.bodyErr().?;
                 },
                 else => |e| {
-                    try summary.print("Error: {}\n", .{e});
+                    if (!quiet) {
+                        try summary.print("Error: {}\n", .{e});
+                    }
                     switch (afterStreamReadError(read_errors)) {
                         .retry => {
                             read_errors += 1;
@@ -285,7 +291,9 @@ pub fn streamToWriter(
                 },
             }
         };
-        tracker.record(io, read, @intCast(content_size_bytes));
+        if (tracker) |*t| {
+            t.record(io, read, @intCast(content_size_bytes));
+        }
     }
 }
 
@@ -297,6 +305,7 @@ pub fn streamToFile(
     file: *std.Io.File,
     content_size_bytes: u64,
     read_timeout: std.Io.Timeout,
+    quiet: bool,
 ) !void {
     const file_buffer = try gpa.alloc(u8, READ_BUF_LEN);
     var file_writer = file.writer(io, file_buffer);
@@ -305,7 +314,7 @@ pub fn streamToFile(
         file_interface.flush() catch {};
     }
 
-    try streamToWriter(io, gpa, summary, response, file_interface, content_size_bytes, read_timeout);
+    try streamToWriter(io, gpa, summary, response, file_interface, content_size_bytes, read_timeout, quiet);
 }
 
 test "afterStreamReadError retries until limit" {

@@ -57,8 +57,11 @@ fn executeDownload(
     const output_plan = try download.planOutput(gpa, init.io, args.output, args.uri);
     // if set -O - (that sets result to stdout like wget) then log to stderr
     const summary = if (output_plan == .stdout) stderr else stdout;
+    const warnings: ?*std.Io.Writer = if (args.quiet) null else stderr;
 
-    try summary.print("URI: {s}\n", .{args.uri_source});
+    if (!args.quiet) {
+        try summary.print("URI: {s}\n", .{args.uri_source});
+    }
 
     const proxy_config = try proxy.Config.init(gpa, init.environ_map, args.proxy);
     var client = transport.Transport.init(
@@ -70,7 +73,7 @@ fn executeDownload(
         args.max_redirects,
     );
     defer client.deinit();
-    var req = try client.get(args.uri, args.headers, stderr);
+    var req = try client.get(args.uri, args.headers, warnings);
     defer req.deinit();
 
     try req.sendBodiless();
@@ -84,16 +87,20 @@ fn executeDownload(
         io_timeout,
     );
 
-    const content_type = response.head.content_type orelse "text/plain";
-    try summary.print("Content-type: {s}\n", .{content_type});
+    if (!args.quiet) {
+        const content_type = response.head.content_type orelse "text/plain";
+        try summary.print("Content-type: {s}\n", .{content_type});
+    }
 
     if (response.head.status != http.Status.ok) {
-        try summary.print("Http response: {d}\n", .{@intFromEnum(response.head.status)});
+        if (!args.quiet) {
+            try summary.print("Http response: {d}\n", .{@intFromEnum(response.head.status)});
+        }
         return errors.ZgetError.HttpError;
     }
 
     const content_size_bytes = response.head.content_length orelse 0;
-    if (content_size_bytes > 0) {
+    if (!args.quiet and content_size_bytes > 0) {
         try summary.print("Content-size: {0Bi:.2} ({0} bytes)\n", .{content_size_bytes});
     }
 
@@ -113,6 +120,7 @@ fn executeDownload(
             stdout,
             content_size_bytes,
             io_timeout,
+            args.quiet,
         ),
         .file => |target| {
             var file = try download.createFile(init.io, target);
@@ -126,6 +134,7 @@ fn executeDownload(
                 &file,
                 content_size_bytes,
                 io_timeout,
+                args.quiet,
             );
         },
     }

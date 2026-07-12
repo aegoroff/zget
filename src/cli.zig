@@ -17,6 +17,7 @@ pub const Args = struct {
     timeout_seconds: ?u32,
     no_check_certificate: bool,
     max_redirects: u16,
+    quiet: bool,
 };
 
 pub const CliResult = union(enum) {
@@ -83,6 +84,11 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
         'V',
         "Print version information and exit",
     );
+    const quiet_opt = yazap.Arg.booleanOption(
+        "quiet",
+        'q',
+        "Quiet (no output)",
+    );
     var timeout_opt = yazap.Arg.singleValueOption(
         "timeout",
         null,
@@ -109,6 +115,7 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     try root_cmd.addArg(proxy_user_opt);
     try root_cmd.addArg(proxy_password_opt);
     try root_cmd.addArg(version_opt);
+    try root_cmd.addArg(quiet_opt);
     try root_cmd.addArg(timeout_opt);
     try root_cmd.addArg(no_check_certificate_opt);
     try root_cmd.addArg(max_redirect_opt);
@@ -146,6 +153,7 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
         .timeout_seconds = timeout_seconds,
         .no_check_certificate = matches.containsArg("no-check-certificate"),
         .max_redirects = max_redirects,
+        .quiet = matches.containsArg("quiet"),
     } };
 }
 

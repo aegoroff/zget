@@ -54,9 +54,9 @@ pub fn deinit(self: *Transport) void {
     self.http_client.deinit();
 }
 
-pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8, warnings: *std.Io.Writer) http.Client.RequestError!http.Client.Request {
+pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8, warnings: ?*std.Io.Writer) http.Client.RequestError!http.Client.Request {
     if (self.no_check_certificate) {
-        tls_connect.warnInsecureTls(warnings);
+        if (warnings) |writer| tls_connect.warnInsecureTls(writer);
     }
     try ensureTlsReady(&self.http_client);
 
@@ -77,8 +77,8 @@ pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8, warnings
                     user_agent = .omit;
                 }
                 try self.extra_headers.append(self.gpa, header);
-            } else {
-                warnIgnoredHeader(warnings, s);
+            } else if (warnings) |writer| {
+                warnIgnoredHeader(writer, s);
             }
         }
 
@@ -99,7 +99,7 @@ fn acquireInsecureConnection(
     self: *Transport,
     uri: std.Uri,
     host: HostName,
-    warnings: *std.Io.Writer,
+    warnings: ?*std.Io.Writer,
 ) http.Client.RequestError!?*http.Client.Connection {
     if (!self.no_check_certificate) return null;
 
@@ -107,7 +107,7 @@ fn acquireInsecureConnection(
     if (protocol != .tls) return null;
 
     if (self.http_client.https_proxy != null or self.http_client.http_proxy != null) {
-        tls_connect.warnProxyInsecureUnsupported(warnings);
+        if (warnings) |writer| tls_connect.warnProxyInsecureUnsupported(writer);
         return null;
     }
 
