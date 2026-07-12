@@ -2,6 +2,7 @@ const std = @import("std");
 const http = std.http;
 const errors = @import("errors.zig");
 const progress = @import("progress.zig");
+const timeout = @import("timeout.zig");
 
 const READ_BUF_LEN = 16 * 4096;
 const MAX_ERRORS: i16 = 10;
@@ -238,6 +239,7 @@ pub fn streamToWriter(
     response: *std.http.Client.Response,
     dest: *std.Io.Writer,
     content_size_bytes: u64,
+    read_timeout: std.Io.Timeout,
 ) !void {
     const read_buf = try gpa.alloc(u8, READ_BUF_LEN);
 
@@ -251,7 +253,7 @@ pub fn streamToWriter(
         try gpa.alloc(u8, decompress_buf_len);
 
     var decompress: http.Decompress = undefined;
-    var reader = response.readerDecompressing(read_buf, &decompress, decompress_buf);
+    const reader = response.readerDecompressing(read_buf, &decompress, decompress_buf);
 
     var tracker = progress.Tracker.start(io, content_size_bytes);
     defer {
@@ -261,10 +263,16 @@ pub fn streamToWriter(
 
     var read_errors: i16 = 0;
     while (true) {
-        const read = reader.stream(dest, .limited(READ_BUF_LEN)) catch |err| {
+        const read = timeout.streamWithIdleTimeout(io, reader, dest, READ_BUF_LEN, read_timeout) catch |err| {
             switch (err) {
                 error.EndOfStream => break,
-                error.ReadFailed => return response.bodyErr().?,
+                error.Timeout => return err,
+                error.ReadFailed => {
+                    if (response.request.connection) |conn| {
+                        if (conn.stream_reader.err) |stream_err| return stream_err;
+                    }
+                    return response.bodyErr().?;
+                },
                 else => |e| {
                     try summary.print("Error: {}\n", .{e});
                     switch (afterStreamReadError(read_errors)) {
@@ -288,6 +296,7 @@ pub fn streamToFile(
     response: *std.http.Client.Response,
     file: *std.Io.File,
     content_size_bytes: u64,
+    read_timeout: std.Io.Timeout,
 ) !void {
     const file_buffer = try gpa.alloc(u8, READ_BUF_LEN);
     var file_writer = file.writer(io, file_buffer);
@@ -296,7 +305,7 @@ pub fn streamToFile(
         file_interface.flush() catch {};
     }
 
-    try streamToWriter(io, gpa, summary, response, file_interface, content_size_bytes);
+    try streamToWriter(io, gpa, summary, response, file_interface, content_size_bytes, read_timeout);
 }
 
 test "afterStreamReadError retries until limit" {

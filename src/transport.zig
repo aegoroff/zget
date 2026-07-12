@@ -4,6 +4,8 @@ const http = std.http;
 const build_options = @import("build_options");
 const proxy = @import("proxy.zig");
 
+const timeout = @import("timeout.zig");
+
 const MAX_REDIRECTS = 10;
 const DEFAULT_REDIRECT_BEHAVIOR = http.Client.Request.RedirectBehavior.init(MAX_REDIRECTS);
 const DEFAULT_USER_AGENT = std.fmt.comptimePrint("zget/{s}", .{build_options.version});
@@ -12,19 +14,31 @@ gpa: std.mem.Allocator,
 http_client: std.http.Client,
 extra_headers: std.ArrayList(http.Header),
 proxy_config: proxy.Config,
+io_timeout: std.Io.Timeout,
 
-pub fn init(gpa: std.mem.Allocator, io: std.Io, proxy_config: proxy.Config) Transport {
+pub fn init(
+    gpa: std.mem.Allocator,
+    io: std.Io,
+    proxy_config: proxy.Config,
+    timeout_seconds: ?u32,
+) Transport {
     var http_client = std.http.Client{
         .allocator = gpa,
         .io = io,
     };
     proxy_config.apply(&http_client);
 
+    const io_timeout: std.Io.Timeout = if (timeout_seconds) |seconds|
+        timeout.fromSeconds(seconds)
+    else
+        .none;
+
     return Transport{
         .gpa = gpa,
         .http_client = http_client,
         .extra_headers = .empty,
         .proxy_config = proxy_config,
+        .io_timeout = io_timeout,
     };
 }
 
@@ -57,13 +71,13 @@ pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8, warnings
         }
     }
 
-    return self.http_client.request(.GET, uri, .{
+    return timeout.requestWithConnectTimeout(&self.http_client, .GET, uri, .{
         .redirect_behavior = DEFAULT_REDIRECT_BEHAVIOR,
         .extra_headers = self.extra_headers.items,
         .headers = .{
             .user_agent = user_agent,
         },
-    });
+    }, self.io_timeout);
 }
 
 fn ensureTlsReady(client: *http.Client) !void {

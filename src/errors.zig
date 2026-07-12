@@ -10,6 +10,7 @@ pub const ZgetError = error{
     CertificateBundleLoadFailure,
     UnsupportedCompressionMethod,
     TlsInitializationFailed,
+    InvalidTimeout,
 };
 
 pub fn message(err: anyerror) ?[]const u8 {
@@ -23,8 +24,10 @@ pub fn message(err: anyerror) ?[]const u8 {
         error.CertificateBundleLoadFailure => "Failed to load TLS certificate bundle",
         error.UnsupportedCompressionMethod => "Unsupported Content-Encoding: compress",
         error.TlsInitializationFailed => "TLS initialization failed",
+        error.InvalidTimeout => "Timeout must be a positive number of seconds",
 
         error.ConnectionRefused => "Connection refused",
+        error.Timeout => "Connection timed out",
         error.ConnectionTimedOut => "Connection timed out",
         error.NetworkUnreachable => "Network is unreachable",
         error.HostUnreachable => "Host is unreachable",

@@ -3,6 +3,7 @@ const cli = @import("cli.zig");
 const download = @import("download.zig");
 const errors = @import("errors.zig");
 const proxy = @import("proxy.zig");
+const timeout = @import("timeout.zig");
 const transport = @import("transport.zig");
 const http = std.http;
 
@@ -48,6 +49,11 @@ fn executeDownload(
     stderr: *std.Io.Writer,
     args: cli.Args,
 ) !void {
+    const io_timeout: std.Io.Timeout = if (args.timeout_seconds) |seconds|
+        timeout.fromSeconds(seconds)
+    else
+        .none;
+
     const output_plan = try download.planOutput(gpa, init.io, args.output, args.uri);
     // if set -O - (that sets result to stdout like wget) then log to stderr
     const summary = if (output_plan == .stdout) stderr else stdout;
@@ -55,7 +61,7 @@ fn executeDownload(
     try summary.print("URI: {s}\n", .{args.uri_source});
 
     const proxy_config = try proxy.Config.init(gpa, init.environ_map, args.proxy);
-    var client = transport.Transport.init(gpa, init.io, proxy_config);
+    var client = transport.Transport.init(gpa, init.io, proxy_config, args.timeout_seconds);
     defer client.deinit();
     var req = try client.get(args.uri, args.headers, stderr);
     defer req.deinit();
@@ -64,7 +70,7 @@ fn executeDownload(
 
     var header_buffer = try std.ArrayList(u8).initCapacity(gpa, 65536);
     header_buffer.expandToCapacity();
-    var response = try req.receiveHead(header_buffer.items);
+    var response = try timeout.receiveHeadWithTimeout(init.io, &req, header_buffer.items, io_timeout);
 
     const content_type = response.head.content_type orelse "text/plain";
     try summary.print("Content-type: {s}\n", .{content_type});
@@ -94,6 +100,7 @@ fn executeDownload(
             &response,
             stdout,
             content_size_bytes,
+            io_timeout,
         ),
         .file => |target| {
             var file = try download.createFile(init.io, target);
@@ -106,6 +113,7 @@ fn executeDownload(
                 &response,
                 &file,
                 content_size_bytes,
+                io_timeout,
             );
         },
     }
@@ -119,4 +127,5 @@ test {
     _ = @import("progress.zig");
     _ = @import("proxy.zig");
     _ = @import("transport.zig");
+    _ = @import("timeout.zig");
 }

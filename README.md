@@ -17,6 +17,7 @@ A non-interactive network retriever implemented in [Zig](https://ziglang.org/) 0
 - Filename from URL path (percent-decoded), `Content-Disposition`, or `index.html` fallback
 - Readable error messages on stderr
 - `--version` / `-V`
+- `--timeout` — connection and read timeout in seconds
 - Default `User-Agent: zget/<version>` header
 - Cross-platform builds (Linux, macOS, Windows)
 
@@ -106,6 +107,7 @@ zget -O - https://example.com/file.zip
 | `--proxy-user <USER>` | Username for proxy authentication |
 | `--proxy-password <PASS>` | Password for proxy authentication |
 | `-V, --version` | Print version information and exit |
+| `--timeout <SECONDS>` | Connection and read timeout in seconds |
 | `-h, --help` | Print help and exit |
 
 Positional argument: `URI` — the URL to download (`http://` or `https://` only).

@@ -3,6 +3,7 @@ const yazap = @import("yazap");
 const builtin = @import("builtin");
 const build_options = @import("build_options");
 
+const errors = @import("errors.zig");
 const proxy = @import("proxy.zig");
 
 pub const Args = struct {
@@ -11,6 +12,7 @@ pub const Args = struct {
     headers: []const []const u8,
     output: ?[]const u8,
     proxy: proxy.CliOptions,
+    timeout_seconds: ?u32,
 };
 
 pub const CliResult = union(enum) {
@@ -77,6 +79,13 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
         'V',
         "Print version information and exit",
     );
+    var timeout_opt = yazap.Arg.singleValueOption(
+        "timeout",
+        null,
+        "Connection and read timeout in seconds",
+    );
+    timeout_opt.setValuePlaceholder("SECONDS");
+    timeout_opt.setProperty(.takes_value);
 
     try root_cmd.addArg(headers_opt);
     try root_cmd.addArg(output_opt);
@@ -84,6 +93,7 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     try root_cmd.addArg(proxy_user_opt);
     try root_cmd.addArg(proxy_password_opt);
     try root_cmd.addArg(version_opt);
+    try root_cmd.addArg(timeout_opt);
     try root_cmd.addArg(uri_opt);
 
     const raw_argv = try init.minimal.args.toSlice(gpa);
@@ -95,6 +105,11 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     const source = matches.getSingleValue("URI").?;
     const uri = try std.Uri.parse(source);
 
+    const timeout_seconds = if (matches.getSingleValue("timeout")) |value|
+        try parseTimeoutSeconds(value)
+    else
+        null;
+
     return .{ .run = .{
         .uri_source = source,
         .uri = uri,
@@ -105,7 +120,14 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
             .proxy_user = matches.getSingleValue("proxy-user"),
             .proxy_password = matches.getSingleValue("proxy-password"),
         },
+        .timeout_seconds = timeout_seconds,
     } };
+}
+
+fn parseTimeoutSeconds(raw: []const u8) errors.ZgetError!u32 {
+    const seconds = std.fmt.parseInt(u32, raw, 10) catch return error.InvalidTimeout;
+    if (seconds == 0) return error.InvalidTimeout;
+    return seconds;
 }
 
 fn wantsVersion(argv: []const [:0]const u8) bool {
@@ -174,6 +196,18 @@ test "normalizeOutputDashArgv rewrites --output -" {
     try std.testing.expectEqual(@as(usize, 2), normalized.len);
     try std.testing.expectEqualStrings("--output=-", normalized[0]);
     try std.testing.expectEqualStrings("https://example.com", normalized[1]);
+}
+
+test "parseTimeoutSeconds accepts positive values" {
+    try std.testing.expectEqual(@as(u32, 30), try parseTimeoutSeconds("30"));
+}
+
+test "parseTimeoutSeconds rejects zero" {
+    try std.testing.expectError(error.InvalidTimeout, parseTimeoutSeconds("0"));
+}
+
+test "parseTimeoutSeconds rejects non-numeric values" {
+    try std.testing.expectError(error.InvalidTimeout, parseTimeoutSeconds("abc"));
 }
 
 test "normalizeOutputDashArgv leaves other args unchanged" {
