@@ -35,6 +35,8 @@ pub const Config = struct {
         }
         if (getEnvInsensitive(environ_map, "https_proxy")) |url| {
             config.https_proxy = try createProxy(gpa, url, proxy_user, proxy_password);
+        } else if (config.http_proxy) |http_proxy| {
+            config.https_proxy = http_proxy;
         }
 
         return config;
@@ -242,6 +244,23 @@ test "load reads http and https proxy from environment" {
     try std.testing.expect(config.https_proxy != null);
     try std.testing.expectEqual(@as(u16, 8080), config.http_proxy.?.port);
     try std.testing.expectEqual(@as(u16, 8443), config.https_proxy.?.port);
+}
+
+test "load falls back https_proxy to http_proxy" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const environ = std.process.Environ.empty;
+    var map = try std.process.Environ.createMap(environ, arena);
+    defer map.deinit();
+    try map.put("http_proxy", "http://proxy.example:8080");
+
+    const config = try Config.init(arena, &map, .{});
+    try std.testing.expect(config.http_proxy != null);
+    try std.testing.expect(config.https_proxy != null);
+    try std.testing.expect(config.http_proxy == config.https_proxy);
+    try std.testing.expectEqual(@as(u16, 8080), config.https_proxy.?.port);
 }
 
 test "load reads uppercase proxy environment variables" {
