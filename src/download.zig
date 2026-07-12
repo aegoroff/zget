@@ -5,6 +5,16 @@ const progress = @import("progress.zig");
 const READ_BUF_LEN = 16 * 4096;
 const MAX_ERRORS: i16 = 10;
 
+const AfterStreamReadError = enum {
+    retry,
+    fail,
+};
+
+fn afterStreamReadError(read_errors: i16) AfterStreamReadError {
+    if (read_errors < MAX_ERRORS) return .retry;
+    return .fail;
+}
+
 pub const OutputTarget = union(enum) {
     stdout,
     file: []const u8,
@@ -82,11 +92,12 @@ pub fn streamToWriter(
                 error.EndOfStream => break,
                 else => |e| {
                     try summary.print("Error: {}\n", .{e});
-                    if (read_errors < MAX_ERRORS) {
-                        read_errors += 1;
-                        continue;
-                    } else {
-                        break;
+                    switch (afterStreamReadError(read_errors)) {
+                        .retry => {
+                            read_errors += 1;
+                            continue;
+                        },
+                        .fail => return e,
                     }
                 },
             }
@@ -111,6 +122,12 @@ pub fn streamToFile(
     }
 
     try streamToWriter(io, gpa, summary, response, file_interface, content_size_bytes);
+}
+
+test "afterStreamReadError retries until limit" {
+    try std.testing.expect(afterStreamReadError(0) == .retry);
+    try std.testing.expect(afterStreamReadError(MAX_ERRORS - 1) == .retry);
+    try std.testing.expect(afterStreamReadError(MAX_ERRORS) == .fail);
 }
 
 test "resolveOutput stdout for -O -" {
