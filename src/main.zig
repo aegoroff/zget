@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const cli = @import("cli.zig");
 const download = @import("download.zig");
 const errors = @import("errors.zig");
@@ -22,7 +23,15 @@ const SummaryLog = struct {
     }
 };
 
+const utf8_console = if (builtin.os.tag == .windows)
+    @import("utf8_console.zig")
+else
+    struct {
+        pub fn setupConsole() void {}
+    };
+
 pub fn main(init: std.process.Init) void {
+    utf8_console.setupConsole();
     run(init) catch |err| {
         var stderr_buffer: [1024]u8 = undefined;
         var stderr_writer = std.Io.File.stderr().writer(init.io, &stderr_buffer);
