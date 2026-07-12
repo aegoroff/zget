@@ -24,9 +24,9 @@ pub fn main(init: std.process.Init) !void {
 
     const args = try cli.parse(init, gpa);
 
-    const output_target = try download.resolveOutput(gpa, init.io, args.output, args.uri);
+    const output_plan = try download.planOutput(gpa, init.io, args.output, args.uri);
     // if set -O - (that sets result to stdout like wget) then log to stderr
-    const summary = if (output_target == .stdout) stderr else stdout;
+    const summary = if (output_plan == .stdout) stderr else stdout;
 
     try summary.print("URI: {s}\n", .{args.uri_source});
 
@@ -54,6 +54,13 @@ pub fn main(init: std.process.Init) !void {
     if (content_size_bytes > 0) {
         try summary.print("Content-size: {0Bi:.2} ({0} bytes)\n", .{content_size_bytes});
     }
+
+    const output_target = try download.outputTargetFromPlan(
+        gpa,
+        output_plan,
+        args.uri,
+        response.head.content_disposition,
+    );
 
     switch (output_target) {
         .stdout => try download.streamToWriter(
