@@ -25,15 +25,15 @@ pub const Config = struct {
         };
         if (!config.use_proxy) return config;
 
-        config.no_proxy_entries = try parseNoProxyList(gpa, environ_map.get("no_proxy"));
+        config.no_proxy_entries = try parseNoProxyList(gpa, getEnvInsensitive(environ_map, "no_proxy"));
 
         const proxy_user = cli.proxy_user;
         const proxy_password = cli.proxy_password orelse "";
 
-        if (environ_map.get("http_proxy")) |url| {
+        if (getEnvInsensitive(environ_map, "http_proxy")) |url| {
             config.http_proxy = try createProxy(gpa, url, proxy_user, proxy_password);
         }
-        if (environ_map.get("https_proxy")) |url| {
+        if (getEnvInsensitive(environ_map, "https_proxy")) |url| {
             config.https_proxy = try createProxy(gpa, url, proxy_user, proxy_password);
         }
 
@@ -56,6 +56,15 @@ pub const Config = struct {
         return hostMatchesNoProxy(host, self.no_proxy_entries);
     }
 };
+
+fn getEnvInsensitive(map: *const std.process.Environ.Map, name: []const u8) ?[]const u8 {
+    const keys = map.keys();
+    const values = map.values();
+    for (keys, values) |key, value| {
+        if (std.ascii.eqlIgnoreCase(key, name)) return value;
+    }
+    return null;
+}
 
 fn parseNoProxyList(gpa: std.mem.Allocator, value: ?[]const u8) ![]const []const u8 {
     const raw = value orelse return &.{};
@@ -233,6 +242,43 @@ test "load reads http and https proxy from environment" {
     try std.testing.expect(config.https_proxy != null);
     try std.testing.expectEqual(@as(u16, 8080), config.http_proxy.?.port);
     try std.testing.expectEqual(@as(u16, 8443), config.https_proxy.?.port);
+}
+
+test "load reads uppercase proxy environment variables" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const environ = std.process.Environ.empty;
+    var map = try std.process.Environ.createMap(environ, arena);
+    defer map.deinit();
+    try map.put("HTTP_PROXY", "http://proxy.example:8080");
+    try map.put("HTTPS_PROXY", "http://proxy.example:8443");
+    try map.put("NO_PROXY", "localhost,.example.com");
+
+    const config = try Config.init(arena, &map, .{});
+    try std.testing.expect(config.use_proxy);
+    try std.testing.expect(config.http_proxy != null);
+    try std.testing.expect(config.https_proxy != null);
+    try std.testing.expectEqual(@as(usize, 2), config.no_proxy_entries.len);
+    try std.testing.expectEqualStrings("localhost", config.no_proxy_entries[0]);
+    try std.testing.expectEqualStrings(".example.com", config.no_proxy_entries[1]);
+}
+
+test "getEnvInsensitive matches mixed-case keys" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const environ = std.process.Environ.empty;
+    var map = try std.process.Environ.createMap(environ, arena);
+    defer map.deinit();
+    try map.put("Http_Proxy", "http://proxy.example:3128");
+
+    try std.testing.expectEqualStrings(
+        "http://proxy.example:3128",
+        getEnvInsensitive(&map, "http_proxy").?,
+    );
 }
 
 test "load applies proxy-user credentials" {
