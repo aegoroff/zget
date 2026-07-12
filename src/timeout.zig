@@ -16,7 +16,7 @@ fn sleepForTimeout(io: Io, timeout: Io.Timeout) void {
     Io.Timeout.sleep(timeout, io) catch {};
 }
 
-pub fn requestWithConnectTimeout(
+pub fn request(
     client: *http.Client,
     method: http.Method,
     uri: std.Uri,
@@ -51,7 +51,7 @@ pub fn requestWithConnectTimeout(
 
 pub const IdleTimeoutError = Io.Reader.StreamError || error{Timeout};
 
-pub fn receiveHeadWithTimeout(
+pub fn receiveHead(
     io: Io,
     req: *http.Client.Request,
     header_buffer: []u8,
@@ -82,7 +82,7 @@ pub fn receiveHeadWithTimeout(
     }
 }
 
-pub fn streamWithIdleTimeout(
+pub fn stream(
     io: Io,
     reader: *Io.Reader,
     dest: *Io.Writer,

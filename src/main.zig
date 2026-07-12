@@ -101,7 +101,7 @@ fn executeDownload(
 
     var header_buffer = try std.ArrayList(u8).initCapacity(gpa, 65536);
     header_buffer.expandToCapacity();
-    var response = try timeout.receiveHeadWithTimeout(
+    var response = try timeout.receiveHead(
         init.io,
         &req,
         header_buffer.items,

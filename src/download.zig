@@ -322,7 +322,7 @@ pub fn streamToWriter(
 
     var read_errors: i16 = 0;
     while (true) {
-        const read = timeout.streamWithIdleTimeout(io, reader, stream_dest, READ_BUF_LEN, read_timeout) catch |err| {
+        const read = timeout.stream(io, reader, stream_dest, READ_BUF_LEN, read_timeout) catch |err| {
             switch (err) {
                 error.EndOfStream => break,
                 error.Timeout => return err,

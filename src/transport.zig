@@ -104,7 +104,7 @@ pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8, warnings
         };
     };
 
-    return timeout.requestWithConnectTimeout(&self.http_client, .GET, uri, request_options, self.io_timeout);
+    return timeout.request(&self.http_client, .GET, uri, request_options, self.io_timeout);
 }
 
 fn acquireInsecureConnection(
