@@ -21,14 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target:
-          [
-            aarch64-linux-musl,
-            x86_64-linux-musl,
-            x86_64-windows-gnu,
-            x86_64-macos-none,
-            aarch64-macos-none,
-          ]
         include:
           - target: x86_64-linux-musl
             abi: musl
@@ -62,23 +54,25 @@ jobs:
         id: get_version
         shell: bash
         run: |
-          echo "using version tag ${GITHUB_REF:11}"
-          echo "version=${GITHUB_REF:11}" >> $GITHUB_OUTPUT
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.4.0-dev" >> "$GITHUB_OUTPUT"
+          fi
       - name: Install mise and tools
         uses: jdx/mise-action@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build with mise
-        shell: bash
-        run: |
-          export ABI="${{ matrix.abi }}"
-          export OS="${{ matrix.os }}"
-          export ARCH="${{ matrix.arch }}"
-          export CPU="${{ matrix.processor }}"
-          export VERSION="${{ steps.get_version.outputs.VERSION }}"
-          
-          mise run build:zig
+      - name: Build with just
+        run: >
+          just
+          arch=${{ matrix.arch }}
+          os=${{ matrix.os }}
+          abi=${{ matrix.abi }}
+          ver=${{ steps.get_version.outputs.version }}
+          cpu=${{ matrix.processor }}
+          release
 
       - name: Packaging
         run: |
@@ -120,8 +114,11 @@ jobs:
         id: get_version
         shell: bash
         run: |
-          echo "using version tag ${GITHUB_REF:11}"
-          echo "version=${GITHUB_REF:11}" >> $GITHUB_OUTPUT
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.4.0-dev" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Download artefacts
         uses: actions/download-artifact@v8
@@ -131,7 +128,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.get_version.outputs.VERSION }}
+          tag_name: ${{ steps.get_version.outputs.version }}
           body: "${{ needs.generate-changelog.outputs.release_body }}"
           files: |
             ./release/**/*.tar.gz

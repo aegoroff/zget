@@ -28,8 +28,8 @@ src/
   checksum.zig    # Checksum algorithm parsing and digest output
 build.zig         # Build, test, run, archive steps
 build.zig.zon     # Package manifest and yazap dependency
-justfile          # Local build shortcuts (mise + zig)
-mise.toml         # Tool versions and CI build task
+justfile          # Local and CI build recipes (mise + zig)
+mise.toml         # Tool versions (zig, just)
 .github/workflows/  # Cross-platform CI and release
 ```
 
@@ -37,7 +37,7 @@ There is no `tests/` directory — tests live next to the code they cover (`test
 
 ## Build and run
 
-Use **mise** to pin the Zig version, or install Zig 0.16.0 manually.
+Use **mise** to pin the Zig/just versions, or install Zig 0.16.0 and just manually.
 
 ```bash
 # Standard local build
@@ -50,23 +50,19 @@ zig build test
 zig build run -- -O out.zip https://example.com/file.zip
 
 # Release archive (tar.gz in zig-out/)
-zig build archive -Dversion=0.1.3
+zig build archive -Dversion=0.4.0
 
 # Cross-compile example
 zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseFast
 ```
 
-Via **just** (wraps mise):
+Via **just** (uses mise for Zig; CI uses the same recipes):
 
 ```bash
-just build          # ReleaseFast, x86_64-linux-musl, version 0.1.3
+just build                                                      # ReleaseFast, x86_64-linux-musl, core2
 just test
-```
-
-Via **mise** (used in CI):
-
-```bash
-mise run build:zig
+just arch=x86_64 os=linux abi=musl ver=0.4.0 cpu=core2 release
+just ver=0.4.0 build-all                                        # all CI targets + archives
 ```
 
 Binary output: `zig-out/bin/zget` (or custom prefix from `--prefix-exe-dir`).
@@ -162,14 +158,14 @@ zig build test
 
 When adding features, prefer table-driven or focused unit tests over integration tests unless HTTP mocking is already in place.
 
-CI runs tests only for `x86_64-linux-gnu/musl` builds (`mise.toml` task). Ensure tests pass on that target.
+CI runs tests only for `x86_64-linux` builds (`just release`). Ensure tests pass on that target.
 
 ## CI and releases
 
 - **Branches:** `master`, `develop`; PRs target `master`.
-- **CI:** `.github/workflows/ci_build.yml` — matrix build for Linux, Windows, macOS (x86_64 + aarch64).
+- **CI:** `.github/workflows/ci_build.yml` — matrix build for Linux, Windows, macOS (x86_64 + aarch64) via `just release`.
 - **Releases:** Tags `v*` trigger changelog generation (`cliff.toml` / git-cliff) and GitHub release with `.tar.gz` artifacts.
-- **Version:** Passed at build time via `-Dversion=...` (`build_options.version` in code). Default: `0.1.0-dev`.
+- **Version:** Passed at build time via `-Dversion=...` (`build_options.version` in code). Default: `0.4.0-dev`.
 
 ## Commit and PR guidelines
 

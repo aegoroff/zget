@@ -29,14 +29,14 @@ A non-interactive network retriever implemented in [Zig](https://ziglang.org/) 0
 
 ### Building from Source
 
-Requires [Zig](https://ziglang.org/) **0.16.0** (see `mise.toml`). [mise](https://mise.jdx.dev/) is the easiest way to install the pinned version:
+Requires [Zig](https://ziglang.org/) **0.16.0** and [just](https://github.com/casey/just) (both pinned in [`mise.toml`](mise.toml); use [mise](https://mise.jdx.dev/) or install them manually):
 
 ```bash
 # Clone the repository
 git clone https://github.com/aegoroff/zget.git
 cd zget
 
-# Install Zig 0.16.0 via mise (optional)
+# Install Zig / just via mise (optional)
 mise install
 
 # Build
@@ -45,17 +45,18 @@ zig build
 # Binary: zig-out/bin/zget
 ```
 
-With [just](https://github.com/casey/just):
+Use [just](https://github.com/casey/just) (pinned in [`mise.toml`](mise.toml); CI uses the same recipes):
 
 ```bash
-just build    # ReleaseFast, x86_64-linux-musl
+# Local ReleaseFast build / tests (x86_64-linux-musl)
+just build
 just test
-```
 
-With mise (used in CI):
+# One release target (build + archive; tests on x86_64-linux)
+just arch=x86_64 os=linux abi=musl ver=0.4.0 cpu=core2 release
 
-```bash
-mise run build:zig
+# All CI release targets
+just ver=0.4.0 build-all
 ```
 
 ### Cross-compilation
@@ -69,7 +70,7 @@ zig build -Dtarget=x86_64-windows-gnu
 ### Release Archives
 
 ```bash
-zig build archive -Dversion=0.2.0
+zig build archive -Dversion=0.4.0
 ```
 
 Produces `zig-out/zget-<version>-<arch>-<os>-<abi>.tar.gz`.
