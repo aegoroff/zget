@@ -76,7 +76,7 @@ main.zig
   ├── transport.init()               → redirect limit, TLS options, timeout
   ├── transport.get()                → sendBodiless() → receiveHead()
   ├── download.outputTargetFromPlan()
-  │     └── finalizePendingOutput()  → filename from URI, Content-Disposition, or index.html
+  │     └── finalizePendingOutput()  → filename from Content-Disposition, post-redirect URI, or index.html
   └── download.streamToFile/Writer() → progress.Tracker
 ```
 
@@ -96,8 +96,8 @@ Keep network concerns in `transport.zig`; keep `main.zig` as thin orchestration 
 Key behaviors to preserve when changing code:
 
 - `-O -` writes the body to stdout; status and progress go to stderr.
-- `-O` pointing to an existing directory appends the filename from the URL path (percent-decoded).
-- If the URL has no usable basename, the output filename is resolved after response headers from `Content-Disposition`, falling back to `index.html`.
+- `-O` pointing to an existing directory appends the resolved filename to that directory.
+- When `-O` is omitted (or names an existing directory), the output filename is resolved after response headers: `Content-Disposition` (`filename*`/`filename`) takes priority, then the basename of the final (post-redirect) URI, falling back to `index.html`.
 - Non-200 responses return `ZgetError.HttpError` after printing the status (unless `-q`).
 - Response bodies are decompressed via `readerDecompressing()` when `Content-Encoding` is set.
 - Stream read/write errors are retried up to 10 times, then propagated (non-zero exit code).

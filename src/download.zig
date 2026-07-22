@@ -51,8 +51,7 @@ fn isUsableFileName(name: []const u8) bool {
 pub fn fileNameFromUri(gpa: std.mem.Allocator, uri: std.Uri) !?[]const u8 {
     const base = std.fs.path.basename(uri.path.percent_encoded);
     if (!isUsableFileName(base)) return null;
-    if (std.mem.indexOfScalar(u8, base, '%') == null) return base;
-    return try percentDecodeAlloc(gpa, base);
+    return try decodeIfEncoded(gpa, base);
 }
 
 fn findContentDispositionParam(disposition: []const u8, param_name: []const u8) ?[]const u8 {
@@ -113,6 +112,11 @@ fn percentDecodeAlloc(gpa: std.mem.Allocator, encoded: []const u8) ![]const u8 {
     return try gpa.dupe(u8, decoded);
 }
 
+fn decodeIfEncoded(gpa: std.mem.Allocator, name: []const u8) ![]const u8 {
+    if (std.mem.indexOfScalar(u8, name, '%') == null) return name;
+    return try percentDecodeAlloc(gpa, name);
+}
+
 pub fn parseContentDispositionFileName(disposition: []const u8) ?[]const u8 {
     if (findContentDispositionParam(disposition, "filename*")) |value| {
         if (parseFilenameStar(value)) |encoded| {
@@ -136,24 +140,13 @@ pub fn resolveFileName(
     uri: std.Uri,
     content_disposition: ?[]const u8,
 ) ![]const u8 {
-    if (try fileNameFromUri(gpa, uri)) |name| return name;
-
     if (content_disposition) |disposition| {
-        if (findContentDispositionParam(disposition, "filename*")) |value| {
-            if (parseFilenameStar(value)) |encoded| {
-                const decoded = try percentDecodeAlloc(gpa, encoded);
-                const base = std.fs.path.basename(decoded);
-                if (isUsableFileName(base)) return base;
-            }
-        }
-
-        if (findContentDispositionParam(disposition, "filename")) |value| {
-            if (parseContentDispositionValue(value)) |name| {
-                const base = std.fs.path.basename(name);
-                if (isUsableFileName(base)) return base;
-            }
+        if (parseContentDispositionFileName(disposition)) |raw_name| {
+            return try decodeIfEncoded(gpa, raw_name);
         }
     }
+
+    if (try fileNameFromUri(gpa, uri)) |name| return name;
 
     return DEFAULT_FILE_NAME;
 }
@@ -213,27 +206,11 @@ pub fn expandOutputPath(
 }
 
 pub fn planOutput(
-    gpa: std.mem.Allocator,
     io: std.Io,
     output_opt: ?[]const u8,
-    uri: std.Uri,
 ) !OutputPlan {
     if (output_opt) |output| {
         if (std.mem.eql(u8, output, "-")) return .stdout;
-    }
-
-    if (try fileNameFromUri(gpa, uri)) |file_name| {
-        if (output_opt) |output| {
-            if (isDirectoryOutput(io, output)) {
-                const directory = try requireExistingDirectory(io, output);
-                return .{ .file = try std.fs.path.join(gpa, &[_][]const u8{ directory, file_name }) };
-            }
-            return .{ .file = output };
-        }
-        return .{ .file = file_name };
-    }
-
-    if (output_opt) |output| {
         if (isDirectoryOutput(io, output)) {
             const directory = try requireExistingDirectory(io, output);
             return .{ .pending = .{ .directory = directory } };
@@ -241,6 +218,8 @@ pub fn planOutput(
         return .{ .file = output };
     }
 
+    // No explicit output: defer filename resolution until response headers are
+    // available so Content-Disposition and the post-redirect URI take priority.
     return .{ .pending = .{ .directory = null } };
 }
 
@@ -453,32 +432,45 @@ test "resolveFileName decodes filename star" {
     try std.testing.expectEqualStrings("report final.pdf", name);
 }
 
-test "planOutput uses uri filename in current directory" {
+test "resolveFileName prefers content disposition over uri basename" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
     const uri = try std.Uri.parse("https://example.com/data.json");
-    const plan = try planOutput(std.testing.allocator, std.testing.io, null, uri);
-    try std.testing.expect(plan == .file);
-    try std.testing.expectEqualStrings("data.json", plan.file);
+    const disposition = "attachment; filename=\"report.pdf\"";
+    const name = try resolveFileName(arena, uri, disposition);
+    try std.testing.expectEqualStrings("report.pdf", name);
 }
 
-test "planOutput uses explicit output over uri filename" {
+test "resolveFileName falls back to uri basename without content disposition" {
     const uri = try std.Uri.parse("https://example.com/data.json");
-    const plan = try planOutput(std.testing.allocator, std.testing.io, "custom.bin", uri);
+    const name = try resolveFileName(std.testing.allocator, uri, null);
+    try std.testing.expectEqualStrings("data.json", name);
+}
+
+test "planOutput pending when output omitted" {
+    const plan = try planOutput(std.testing.io, null);
+    try std.testing.expect(plan == .pending);
+    try std.testing.expect(plan.pending.directory == null);
+}
+
+test "planOutput uses explicit output as file" {
+    const plan = try planOutput(std.testing.io, "custom.bin");
     try std.testing.expect(plan == .file);
     try std.testing.expectEqualStrings("custom.bin", plan.file);
 }
 
 test "planOutput treats missing output path as file name" {
-    const uri = try std.Uri.parse("https://example.com/file.txt");
-    const plan = try planOutput(std.testing.allocator, std.testing.io, "missing-dir/out.bin", uri);
+    const plan = try planOutput(std.testing.io, "missing-dir/out.bin");
     try std.testing.expect(plan == .file);
     try std.testing.expectEqualStrings("missing-dir/out.bin", plan.file);
 }
 
 test "planOutput rejects missing directory when output ends with separator" {
-    const uri = try std.Uri.parse("https://example.com/file.txt");
     try std.testing.expectError(
         error.OutputDirectoryNotFound,
-        planOutput(std.testing.allocator, std.testing.io, "missing-dir/", uri),
+        planOutput(std.testing.io, "missing-dir/"),
     );
 }
 
@@ -496,33 +488,14 @@ test "expandOutputPath expands home directory prefix" {
     try std.testing.expectEqualStrings("/home/test/downloads/", expanded);
 }
 
-test "planOutput joins existing directory with uri filename" {
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
-
-    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena_state.deinit();
-    const arena = arena_state.allocator();
-
-    var dir_path_buffer: [128]u8 = undefined;
-    const dir_path = try std.fmt.bufPrint(&dir_path_buffer, ".zig-cache/tmp/{s}", .{&tmp.sub_path});
-
-    const uri = try std.Uri.parse("https://example.com/archive.tar.gz");
-    const plan = try planOutput(arena, std.testing.io, dir_path, uri);
-    try std.testing.expect(plan == .file);
-    try std.testing.expect(std.mem.endsWith(u8, plan.file, "archive.tar.gz"));
-    try std.testing.expect(std.mem.startsWith(u8, plan.file, dir_path));
-}
-
-test "planOutput pending when output is existing directory and uri has no filename" {
+test "planOutput pending when output is existing directory" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
     var dir_path_buffer: [128]u8 = undefined;
     const dir_path = try std.fmt.bufPrint(&dir_path_buffer, ".zig-cache/tmp/{s}", .{&tmp.sub_path});
 
-    const uri = try std.Uri.parse("https://example.com/");
-    const plan = try planOutput(std.testing.allocator, std.testing.io, dir_path, uri);
+    const plan = try planOutput(std.testing.io, dir_path);
     try std.testing.expect(plan == .pending);
     try std.testing.expectEqualStrings(dir_path, plan.pending.directory.?);
 }
@@ -557,7 +530,7 @@ test "outputTargetFromPlan resolves pending directory output" {
     const dir_path = try std.fmt.bufPrint(&dir_path_buffer, ".zig-cache/tmp/{s}", .{&tmp.sub_path});
 
     const uri = try std.Uri.parse("https://example.com/");
-    const plan = try planOutput(arena, std.testing.io, dir_path, uri);
+    const plan = try planOutput(std.testing.io, dir_path);
     const target = try outputTargetFromPlan(arena, plan, uri, null);
     try std.testing.expect(target == .file);
     try std.testing.expect(std.mem.endsWith(u8, target.file, DEFAULT_FILE_NAME));
@@ -565,23 +538,8 @@ test "outputTargetFromPlan resolves pending directory output" {
 }
 
 test "planOutput stdout for -O -" {
-    const uri = try std.Uri.parse("https://example.com/file.txt");
-    const plan = try planOutput(std.testing.allocator, std.testing.io, "-", uri);
+    const plan = try planOutput(std.testing.io, "-");
     try std.testing.expect(plan == .stdout);
-}
-
-test "planOutput file for explicit path" {
-    const uri = try std.Uri.parse("https://example.com/file.txt");
-    const plan = try planOutput(std.testing.allocator, std.testing.io, "out.txt", uri);
-    try std.testing.expect(plan == .file);
-    try std.testing.expectEqualStrings("out.txt", plan.file);
-}
-
-test "planOutput pending when uri has no filename" {
-    const uri = try std.Uri.parse("https://example.com/");
-    const plan = try planOutput(std.testing.allocator, std.testing.io, null, uri);
-    try std.testing.expect(plan == .pending);
-    try std.testing.expect(plan.pending.directory == null);
 }
 
 test "finalizePendingOutput uses index.html fallback" {
