@@ -101,7 +101,7 @@ Key behaviors to preserve when changing code:
 - Non-200 responses return `ZgetError.HttpError` after printing the status (unless `-q`).
 - Response bodies are decompressed via `readerDecompressing()` when `Content-Encoding` is set.
 - Stream read/write errors are retried up to 10 times, then propagated (non-zero exit code).
-- Redirects are enabled via `redirect_behavior` in `transport.zig`; `--max-redirect` sets the limit (default: `cli.DEFAULT_MAX_REDIRECTS`, 10).
+- Redirects are enabled via `redirect_behavior` in `transport.zig`; `--max-redirect` sets the limit (default: `cli.DEFAULT_MAX_REDIRECTS`, 10). A value of `0` disables following: the 3xx response is returned to the caller (mapped to `RedirectBehavior.unhandled`), so it surfaces as `HttpError` like any other non-200 status instead of `TooManyHttpRedirects`.
 - `--timeout SECONDS` applies connect, response-header, and body-read timeouts via `timeout.zig` (`Io.Select`, not socket `SO_RCVTIMEO`).
 - `--no-check-certificate` skips TLS CA chain verification on direct HTTPS only (`transport.zig`); hostname is still verified. Proxied HTTPS and redirect follow-up connections use normal verification.
 - `-q` / `--quiet` suppresses URI/content metadata, progress, summary stats, stream retry messages, and warnings; fatal errors still go to stderr via `errors.report()`.

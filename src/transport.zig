@@ -57,8 +57,16 @@ pub fn init(
         .proxy_config = proxy_config,
         .io_timeout = io_timeout,
         .no_check_certificate = no_check_certificate,
-        .redirect_behavior = http.Client.Request.RedirectBehavior.init(max_redirects),
+        .redirect_behavior = redirectBehavior(max_redirects),
     };
+}
+
+/// `RedirectBehavior.init(0)` maps to `not_allowed`, which makes std return
+/// `error.TooManyHttpRedirects` on any 3xx. Map 0 to `unhandled` instead so the
+/// redirect response is surfaced to the caller like any other non-200 status.
+fn redirectBehavior(max_redirects: u16) http.Client.Request.RedirectBehavior {
+    if (max_redirects == 0) return .unhandled;
+    return http.Client.Request.RedirectBehavior.init(max_redirects);
 }
 
 pub fn deinit(self: *Transport) void {
@@ -344,6 +352,14 @@ test "warnIgnoredHeader writes warning" {
     var writer = std.Io.Writer.fixed(&buffer);
     warnIgnoredHeader(&writer, "BadHeader");
     try std.testing.expectEqualStrings("warning: ignoring malformed header: BadHeader\n", writer.buffered());
+}
+
+test "redirectBehavior surfaces redirect when max is zero" {
+    try std.testing.expect(redirectBehavior(0) == .unhandled);
+}
+
+test "redirectBehavior follows up to max redirects" {
+    try std.testing.expectEqual(@as(u16, 10), redirectBehavior(10).remaining());
 }
 
 test "parseHeader simple" {

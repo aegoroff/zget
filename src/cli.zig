@@ -107,7 +107,7 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     var max_redirect_opt = yazap.Arg.singleValueOption(
         "max-redirect",
         null,
-        "Maximum number of HTTP redirects to follow",
+        "Maximum number of HTTP redirects to follow (0 disables following)",
     );
     max_redirect_opt.setValuePlaceholder("COUNT");
     max_redirect_opt.setProperty(.takes_value);
