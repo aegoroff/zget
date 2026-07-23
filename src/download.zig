@@ -42,16 +42,28 @@ pub const PendingOutput = struct {
 
 fn isUsableFileName(name: []const u8) bool {
     if (name.len == 0) return false;
-    if (std.mem.eql(u8, name, "/")) return false;
     if (std.mem.eql(u8, name, ".")) return false;
     if (std.mem.eql(u8, name, "..")) return false;
+    // Defense in depth: reject any remaining path separators after basename.
+    if (std.mem.indexOfScalar(u8, name, '/') != null) return false;
+    if (std.mem.indexOfScalar(u8, name, '\\') != null) return false;
     return true;
 }
 
+/// Last path component treating both `/` and `\` as separators.
+/// Remote-supplied names may use either, independent of the host OS.
+fn remoteFileNameBase(path: []const u8) []const u8 {
+    return std.fs.path.basenameWindows(path);
+}
+
 pub fn fileNameFromUri(gpa: std.mem.Allocator, uri: std.Uri) !?[]const u8 {
-    const base = std.fs.path.basename(uri.path.percent_encoded);
+    // Decode the path BEFORE taking the basename: an encoded separator (e.g.
+    // `%2F`) must become a real `/` first so basename strips the directory
+    // part, instead of surviving into the output filename (path traversal).
+    const decoded_path = try decodeIfEncoded(gpa, uri.path.percent_encoded);
+    const base = remoteFileNameBase(decoded_path);
     if (!isUsableFileName(base)) return null;
-    return try decodeIfEncoded(gpa, base);
+    return base;
 }
 
 fn findContentDispositionParam(disposition: []const u8, param_name: []const u8) ?[]const u8 {
@@ -117,17 +129,26 @@ fn decodeIfEncoded(gpa: std.mem.Allocator, name: []const u8) ![]const u8 {
     return try percentDecodeAlloc(gpa, name);
 }
 
-pub fn parseContentDispositionFileName(disposition: []const u8) ?[]const u8 {
+pub fn parseContentDispositionFileName(
+    gpa: std.mem.Allocator,
+    disposition: []const u8,
+) !?[]const u8 {
     if (findContentDispositionParam(disposition, "filename*")) |value| {
         if (parseFilenameStar(value)) |encoded| {
-            const base = std.fs.path.basename(encoded);
+            // RFC 5987 `filename*` is percent-encoded: decode BEFORE basename so
+            // an encoded path separator (`%2F` / `%5C`) is stripped rather than
+            // decoded into a real separator after the directory part was kept.
+            const decoded = try decodeIfEncoded(gpa, encoded);
+            const base = remoteFileNameBase(decoded);
             if (isUsableFileName(base)) return base;
         }
     }
 
     if (findContentDispositionParam(disposition, "filename")) |value| {
         if (parseContentDispositionValue(value)) |name| {
-            const base = std.fs.path.basename(name);
+            // RFC 6266 `filename` is a quoted-string, NOT percent-encoded, so a
+            // literal `%` in the name must be preserved unchanged.
+            const base = remoteFileNameBase(name);
             if (isUsableFileName(base)) return base;
         }
     }
@@ -141,9 +162,7 @@ pub fn resolveFileName(
     content_disposition: ?[]const u8,
 ) ![]const u8 {
     if (content_disposition) |disposition| {
-        if (parseContentDispositionFileName(disposition)) |raw_name| {
-            return try decodeIfEncoded(gpa, raw_name);
-        }
+        if (try parseContentDispositionFileName(gpa, disposition)) |name| return name;
     }
 
     if (try fileNameFromUri(gpa, uri)) |name| return name;
@@ -393,19 +412,95 @@ test "fileNameFromUri decodes percent-encoded names" {
     try std.testing.expectEqualStrings("my file.zip", name.?);
 }
 
+test "fileNameFromUri strips encoded path separators" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    // `%2F` decodes to `/` before basename, so the directory part is stripped
+    // rather than producing an output name containing a path separator.
+    const uri = try std.Uri.parse("https://example.com/a%2Fb.txt");
+    const name = try fileNameFromUri(arena, uri);
+    try std.testing.expectEqualStrings("b.txt", name.?);
+}
+
 test "parseContentDispositionFileName quoted value" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
     const disposition = "attachment; filename=\"report.pdf\"";
-    try std.testing.expectEqualStrings("report.pdf", parseContentDispositionFileName(disposition).?);
+    try std.testing.expectEqualStrings("report.pdf", (try parseContentDispositionFileName(arena, disposition)).?);
 }
 
 test "parseContentDispositionFileName unquoted value" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
     const disposition = "attachment; filename=report.pdf";
-    try std.testing.expectEqualStrings("report.pdf", parseContentDispositionFileName(disposition).?);
+    try std.testing.expectEqualStrings("report.pdf", (try parseContentDispositionFileName(arena, disposition)).?);
 }
 
 test "parseContentDispositionFileName filename star" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
     const disposition = "attachment; filename*=UTF-8''report%20final.pdf";
-    try std.testing.expectEqualStrings("report%20final.pdf", parseContentDispositionFileName(disposition).?);
+    try std.testing.expectEqualStrings("report final.pdf", (try parseContentDispositionFileName(arena, disposition)).?);
+}
+
+test "parseContentDispositionFileName strips encoded path separators (filename*)" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    // `%2F` must decode to `/` BEFORE basename, so the directory part is
+    // stripped instead of escaping the output directory.
+    const disposition = "attachment; filename*=UTF-8''..%2F..%2Fsecret";
+    try std.testing.expectEqualStrings("secret", (try parseContentDispositionFileName(arena, disposition)).?);
+}
+
+test "parseContentDispositionFileName preserves literal percent in filename" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    // Non-star `filename` is a literal quoted-string (RFC 6266); `%` is not an
+    // escape and must be preserved.
+    const disposition = "attachment; filename=\"100%25done.pdf\"";
+    try std.testing.expectEqualStrings("100%25done.pdf", (try parseContentDispositionFileName(arena, disposition)).?);
+}
+
+test "parseContentDispositionFileName does not decode percent in filename" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    // `%2F` must stay literal in non-star `filename` — decoding after basename
+    // would turn this into a path traversal (`../evil`).
+    const disposition = "attachment; filename=\"..%2Fevil\"";
+    try std.testing.expectEqualStrings("..%2Fevil", (try parseContentDispositionFileName(arena, disposition)).?);
+}
+
+test "parseContentDispositionFileName strips backslash separators in filename" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    // Literal `\` must be treated as a separator even on POSIX hosts.
+    const disposition = "attachment; filename=\"..\\..\\secret\"";
+    try std.testing.expectEqualStrings("secret", (try parseContentDispositionFileName(arena, disposition)).?);
+}
+
+test "parseContentDispositionFileName strips encoded backslash separators (filename*)" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const disposition = "attachment; filename*=UTF-8''..%5C..%5Csecret";
+    try std.testing.expectEqualStrings("secret", (try parseContentDispositionFileName(arena, disposition)).?);
 }
 
 test "resolveFileName falls back to index.html" {
