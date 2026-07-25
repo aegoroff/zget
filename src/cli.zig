@@ -121,7 +121,7 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     var validate_opt = yazap.Arg.singleValueOption(
         "validate",
         null,
-        "Expected checksum digest to validate downloaded content",
+        "Expected digest (HEX) or TYPE:HEX (sha256/blake3); bare HEX requires --checksum",
     );
     validate_opt.setValuePlaceholder("DIGEST");
     validate_opt.setProperty(.takes_value);
@@ -164,14 +164,12 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
     else
         null;
 
-    const validate_digest = if (matches.getSingleValue("validate")) |value|
-        try checksum.parseDigest(value)
+    const validate_spec = if (matches.getSingleValue("validate")) |value|
+        try checksum.parseValidate(value)
     else
         null;
 
-    if (validate_digest != null and checksum_alg == null) {
-        return error.ValidateRequiresChecksum;
-    }
+    const resolved = try resolveChecksumArgs(checksum_alg, validate_spec);
 
     return .{ .run = .{
         .uri_source = source,
@@ -187,9 +185,34 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
         .no_check_certificate = matches.containsArg("no-check-certificate"),
         .max_redirects = max_redirects,
         .quiet = matches.containsArg("quiet"),
-        .checksum = checksum_alg,
-        .validate_digest = validate_digest,
+        .checksum = resolved.algorithm,
+        .validate_digest = resolved.digest,
     } };
+}
+
+const ResolvedChecksum = struct {
+    algorithm: ?checksum.Algorithm,
+    digest: ?checksum.Digest,
+};
+
+fn resolveChecksumArgs(
+    checksum_alg: ?checksum.Algorithm,
+    validate_spec: ?checksum.ValidateSpec,
+) errors.ZgetError!ResolvedChecksum {
+    const spec = validate_spec orelse return .{
+        .algorithm = checksum_alg,
+        .digest = null,
+    };
+
+    if (spec.algorithm) |typed_alg| {
+        if (checksum_alg) |explicit_alg| {
+            if (explicit_alg != typed_alg) return error.ChecksumAlgorithmMismatch;
+        }
+        return .{ .algorithm = typed_alg, .digest = spec.digest };
+    }
+
+    if (checksum_alg == null) return error.ValidateRequiresChecksum;
+    return .{ .algorithm = checksum_alg, .digest = spec.digest };
 }
 
 fn parseMaxRedirects(raw: []const u8) errors.ZgetError!u16 {
@@ -302,4 +325,42 @@ test "normalizeOutputDashArgv leaves other args unchanged" {
     const argv = [_][:0]const u8{ "-O", "out.txt", "https://example.com" };
     const normalized = try normalizeOutputDashArgv(arena, &argv);
     try std.testing.expectEqualSlices([:0]const u8, &argv, normalized);
+}
+
+test "resolveChecksumArgs accepts typed validate without checksum" {
+    const hex = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const digest = try checksum.parseDigest(hex);
+    const resolved = try resolveChecksumArgs(null, .{ .algorithm = .sha256, .digest = digest });
+    try std.testing.expectEqual(checksum.Algorithm.sha256, resolved.algorithm.?);
+    try std.testing.expectEqual(digest, resolved.digest.?);
+}
+
+test "resolveChecksumArgs accepts matching checksum and typed validate" {
+    const hex = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const digest = try checksum.parseDigest(hex);
+    const resolved = try resolveChecksumArgs(.sha256, .{ .algorithm = .sha256, .digest = digest });
+    try std.testing.expectEqual(checksum.Algorithm.sha256, resolved.algorithm.?);
+    try std.testing.expectEqual(digest, resolved.digest.?);
+}
+
+test "resolveChecksumArgs rejects mismatched algorithms" {
+    const hex = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const digest = try checksum.parseDigest(hex);
+    try std.testing.expectError(
+        error.ChecksumAlgorithmMismatch,
+        resolveChecksumArgs(.blake3, .{ .algorithm = .sha256, .digest = digest }),
+    );
+}
+
+test "resolveChecksumArgs requires checksum for bare digest" {
+    const hex = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const digest = try checksum.parseDigest(hex);
+    try std.testing.expectError(
+        error.ValidateRequiresChecksum,
+        resolveChecksumArgs(null, .{ .algorithm = null, .digest = digest }),
+    );
+
+    const resolved = try resolveChecksumArgs(.blake3, .{ .algorithm = null, .digest = digest });
+    try std.testing.expectEqual(checksum.Algorithm.blake3, resolved.algorithm.?);
+    try std.testing.expectEqual(digest, resolved.digest.?);
 }

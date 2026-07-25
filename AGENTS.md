@@ -106,7 +106,7 @@ Key behaviors to preserve when changing code:
 - `--no-check-certificate` skips TLS CA chain verification on direct HTTPS only (`transport.zig`); hostname is still verified. Proxied HTTPS and redirect follow-up connections use normal verification.
 - `-q` / `--quiet` suppresses URI/content metadata, progress, summary stats, stream retry messages, and warnings; fatal errors still go to stderr via `errors.report()`.
 - `--checksum=sha256` / `--checksum=blake3` hashes decompressed output bytes in `checksum.Stream` via `std.Io.Writer.hashed` and prints `SHA256:` / `BLAKE3:` hex digests to the summary stream; with `-q`, checksum is not computed or printed unless `--validate` is set.
-- `--validate DIGEST` compares the computed digest against 64 hex characters; warns on stderr when not quiet, exits with code 1 on mismatch without printing in quiet mode.
+- `--validate DIGEST` compares the computed digest against 64 hex characters. Value may be `TYPE:HEX` (`sha256:…` / `blake3:…`, as on GitHub Releases) — algorithm comes from the prefix and `--checksum` is optional — or bare hex, which still requires `--checksum`. If both are set and algorithms differ, `ChecksumAlgorithmMismatch` is reported. Warns on stderr when not quiet; exits with code 1 on mismatch without printing in quiet mode.
 - Malformed `-H` values are ignored with a stderr warning (`transport.warnIgnoredHeader`), unless `-q` is set.
 - Proxy env vars are matched case-insensitively; if `https_proxy` is unset, `http_proxy` is reused.
 - `main` uses `init.arena.allocator()` — streaming buffers are allocated from the arena, not the stack.

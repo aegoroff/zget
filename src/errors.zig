@@ -14,6 +14,7 @@ pub const ZgetError = error{
     InvalidChecksum,
     InvalidValidateDigest,
     ValidateRequiresChecksum,
+    ChecksumAlgorithmMismatch,
     ChecksumMismatch,
     OutputDirectoryNotFound,
 };
@@ -32,7 +33,8 @@ pub fn message(err: anyerror) ?[]const u8 {
         error.InvalidMaxRedirects => "Max redirects must be a number from 0 to 65534",
         error.InvalidChecksum => "Unsupported checksum type (only sha256 and blake3 are supported)",
         error.InvalidValidateDigest => "Validate digest must be 64 hexadecimal characters",
-        error.ValidateRequiresChecksum => "--validate requires --checksum",
+        error.ValidateRequiresChecksum => "--validate requires --checksum, or use --validate TYPE:DIGEST",
+        error.ChecksumAlgorithmMismatch => "--checksum and --validate specify different algorithms",
         error.ChecksumMismatch => "Downloaded content checksum does not match",
         error.OutputDirectoryNotFound => "Output directory does not exist",
 

@@ -124,6 +124,24 @@ pub fn parseDigest(raw: []const u8) errors.ZgetError!Digest {
     return digest;
 }
 
+pub const ValidateSpec = struct {
+    algorithm: ?Algorithm,
+    digest: Digest,
+};
+
+/// Parses `--validate` values: bare hex digest, or `TYPE:DIGEST` (e.g. GitHub checksums).
+pub fn parseValidate(raw: []const u8) errors.ZgetError!ValidateSpec {
+    if (std.mem.indexOfScalar(u8, raw, ':')) |colon| {
+        const algorithm = try parse(raw[0..colon]);
+        const digest = try parseDigest(raw[colon + 1 ..]);
+        return .{ .algorithm = algorithm, .digest = digest };
+    }
+    return .{
+        .algorithm = null,
+        .digest = try parseDigest(raw),
+    };
+}
+
 pub fn print(writer: *std.Io.Writer, algorithm: Algorithm, digest: Digest) !void {
     try writer.print("{s}: ", .{label(algorithm)});
     try writeHex(writer, digest);
@@ -188,6 +206,31 @@ test "parseDigest accepts lowercase and uppercase hex" {
 test "parseDigest rejects invalid values" {
     try std.testing.expectError(error.InvalidValidateDigest, parseDigest("abc"));
     try std.testing.expectError(error.InvalidValidateDigest, parseDigest("g" ** 64));
+}
+
+test "parseValidate accepts typed TYPE:DIGEST" {
+    const hex = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const typed = try parseValidate("sha256:" ++ hex);
+    try std.testing.expectEqual(Algorithm.sha256, typed.algorithm.?);
+    try std.testing.expectEqual(try parseDigest(hex), typed.digest);
+
+    const blake = try parseValidate("BLAKE3:" ++ hex);
+    try std.testing.expectEqual(Algorithm.blake3, blake.algorithm.?);
+    try std.testing.expectEqual(try parseDigest(hex), blake.digest);
+}
+
+test "parseValidate accepts bare hex without algorithm" {
+    const hex = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const bare = try parseValidate(hex);
+    try std.testing.expect(bare.algorithm == null);
+    try std.testing.expectEqual(try parseDigest(hex), bare.digest);
+}
+
+test "parseValidate rejects invalid typed values" {
+    const hex = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    try std.testing.expectError(error.InvalidChecksum, parseValidate("md5:" ++ hex));
+    try std.testing.expectError(error.InvalidChecksum, parseValidate(":" ++ hex));
+    try std.testing.expectError(error.InvalidValidateDigest, parseValidate("sha256:abc"));
 }
 
 test "print writes lowercase hex digest" {
