@@ -2,8 +2,8 @@ const std = @import("std");
 const errors = @import("errors.zig");
 
 pub const Digest = [32]u8;
-pub const hash_buf_len = 16 * 4096;
-pub const digest_hex_len = 64;
+pub const HASH_BUF_LEN = 16 * 4096;
+pub const DIGEST_HEX_LEN = 64;
 
 pub const Algorithm = enum {
     sha256,
@@ -116,7 +116,7 @@ pub fn parse(raw: []const u8) errors.ZgetError!Algorithm {
 }
 
 pub fn parseDigest(raw: []const u8) errors.ZgetError!Digest {
-    if (raw.len != digest_hex_len) return error.InvalidValidateDigest;
+    if (raw.len != DIGEST_HEX_LEN) return error.InvalidValidateDigest;
     var digest: Digest = undefined;
     for (0..@sizeOf(Digest)) |i| {
         digest[i] = std.fmt.parseInt(u8, raw[i * 2 ..][0..2], 16) catch return error.InvalidValidateDigest;
@@ -195,7 +195,7 @@ test "parse rejects unsupported algorithms" {
 test "parseDigest accepts lowercase and uppercase hex" {
     const hex = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
     const expected = try parseDigest(hex);
-    var upper_hex: [digest_hex_len]u8 = undefined;
+    var upper_hex: [DIGEST_HEX_LEN]u8 = undefined;
     for (hex, 0..) |c, i| {
         upper_hex[i] = std.ascii.toUpper(c);
     }
@@ -205,7 +205,7 @@ test "parseDigest accepts lowercase and uppercase hex" {
 
 test "parseDigest rejects invalid values" {
     try std.testing.expectError(error.InvalidValidateDigest, parseDigest("abc"));
-    const invalid_hex: [digest_hex_len]u8 = @splat('g');
+    const invalid_hex: [DIGEST_HEX_LEN]u8 = @splat('g');
     try std.testing.expectError(error.InvalidValidateDigest, parseDigest(&invalid_hex));
 }
 
@@ -260,7 +260,7 @@ test "print writes lowercase hex digest" {
 test "Stream passes through dest when checksum is disabled" {
     var dest_buffer: [16]u8 = undefined;
     var dest = std.Io.Writer.fixed(&dest_buffer);
-    var hash_buf: [hash_buf_len]u8 = undefined;
+    var hash_buf: [HASH_BUF_LEN]u8 = undefined;
 
     var stream = Stream.init(&dest, hash_buf[0..], .{
         .algorithm = .sha256,
@@ -275,7 +275,7 @@ test "Stream hashes written bytes" {
     var dest = std.Io.Writer.fixed(&dest_buffer);
     var summary_buffer: [128]u8 = undefined;
     var summary = std.Io.Writer.fixed(&summary_buffer);
-    var hash_buf: [hash_buf_len]u8 = undefined;
+    var hash_buf: [HASH_BUF_LEN]u8 = undefined;
 
     var stream = Stream.init(&dest, hash_buf[0..], .{ .algorithm = .sha256 });
     const writer = stream.writer();
@@ -296,7 +296,7 @@ test "Stream validates digest and warns on mismatch" {
     var summary = std.Io.Writer.fixed(&summary_buffer);
     var warning_buffer: [256]u8 = undefined;
     var warnings = std.Io.Writer.fixed(&warning_buffer);
-    var hash_buf: [hash_buf_len]u8 = undefined;
+    var hash_buf: [HASH_BUF_LEN]u8 = undefined;
 
     const expected: [32]u8 = @splat(0);
     var stream = Stream.init(&dest, hash_buf[0..], .{
@@ -314,7 +314,7 @@ test "Stream validates digest quietly and fails without output on mismatch" {
     var dest = std.Io.Writer.fixed(&dest_buffer);
     var summary_buffer: [128]u8 = undefined;
     var summary = std.Io.Writer.fixed(&summary_buffer);
-    var hash_buf: [hash_buf_len]u8 = undefined;
+    var hash_buf: [HASH_BUF_LEN]u8 = undefined;
 
     const expected: [32]u8 = @splat(0);
     var stream = Stream.init(&dest, hash_buf[0..], .{
@@ -333,7 +333,7 @@ test "Stream validates matching digest quietly without output" {
     var dest = std.Io.Writer.fixed(&dest_buffer);
     var summary_buffer: [128]u8 = undefined;
     var summary = std.Io.Writer.fixed(&summary_buffer);
-    var hash_buf: [hash_buf_len]u8 = undefined;
+    var hash_buf: [HASH_BUF_LEN]u8 = undefined;
 
     const expected = try parseDigest("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
     var stream = Stream.init(&dest, hash_buf[0..], .{

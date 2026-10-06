@@ -303,7 +303,7 @@ pub fn streamToWriter(
     var decompress: http.Decompress = undefined;
     const reader = response.readerDecompressing(read_buf, &decompress, decompress_buf);
 
-    var hash_writer_buf: [checksum.hash_buf_len]u8 = undefined;
+    var hash_writer_buf: [checksum.HASH_BUF_LEN]u8 = undefined;
     var checksum_stream = checksum.Stream.init(dest, hash_writer_buf[0..], checksum_opts);
     const stream_dest = checksum_stream.writer();
 
