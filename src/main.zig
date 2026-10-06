@@ -23,7 +23,7 @@ const SummaryLog = struct {
     }
 };
 
-const utf8_console = if (builtin.os.tag == .windows)
+const utf8_console = if (builtin.target.os.tag == .windows)
     @import("utf8_console.zig")
 else
     struct {
@@ -112,7 +112,7 @@ fn executeDownload(
     try log.print("Content-type: {s}\n", .{content_type});
 
     if (response.head.status != http.Status.ok) {
-        try log.print("Http response: {d}\n", .{@intFromEnum(response.head.status)});
+        try log.print("Http response: {d}\n", .{@backingInt(response.head.status)});
         return errors.ZgetError.HttpError;
     }
 

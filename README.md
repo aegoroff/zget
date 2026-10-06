@@ -1,6 +1,6 @@
 # zget
 
-A non-interactive network retriever implemented in [Zig](https://ziglang.org/) 0.16.0, similar to `wget` or `curl`.
+A non-interactive network retriever implemented in [Zig](https://ziglang.org/) 0.17.0, similar to `wget` or `curl`.
 
 ## Description
 
@@ -29,7 +29,7 @@ A non-interactive network retriever implemented in [Zig](https://ziglang.org/) 0
 
 ### Building from Source
 
-Requires [Zig](https://ziglang.org/) **0.16.0** and [just](https://github.com/casey/just) (both pinned in [`mise.toml`](mise.toml); use [mise](https://mise.jdx.dev/) or install them manually):
+Requires [Zig](https://ziglang.org/) **0.17.0** and [just](https://github.com/casey/just) (both pinned in [`mise.toml`](mise.toml); use [mise](https://mise.jdx.dev/) or install them manually):
 
 ```bash
 # Clone the repository
@@ -48,7 +48,7 @@ zig build
 Use [just](https://github.com/casey/just) (pinned in [`mise.toml`](mise.toml); CI uses the same recipes):
 
 ```bash
-# Local ReleaseFast build / tests (x86_64-linux-musl)
+# Local ReleaseFast (optimize=fast) build / tests (x86_64-linux-musl)
 just build
 just test
 

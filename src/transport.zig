@@ -80,7 +80,11 @@ pub fn get(self: *Transport, uri: std.Uri, headers: []const []const u8, warnings
     }
     try ensureTlsReady(&self.http_client);
 
-    const host = try uri.getHostAlloc(self.gpa);
+    var host_buf: [HostName.max_len]u8 = undefined;
+    const host = HostName.fromUri(uri, &host_buf) catch |err| switch (err) {
+        error.UriMissingHost => |e| return e,
+        error.NameTooLong, error.InvalidHostName => return error.InvalidHostName,
+    };
     if (self.proxy_config.shouldBypassProxy(host.bytes)) {
         self.http_client.http_proxy = null;
         self.http_client.https_proxy = null;
@@ -286,7 +290,7 @@ fn createTlsConnection(
         ),
     );
 
-    http_client.connection_pool.addUsed(io, &tls.connection);
+    try http_client.connection_pool.addUsed(io, &tls.connection);
     return &tls.connection;
 }
 
@@ -336,7 +340,7 @@ fn ensureTlsReady(client: *http.Client) !void {
 }
 
 fn parseHeader(raw: []const u8) ?http.Header {
-    const colon = std.mem.indexOfScalar(u8, raw, ':') orelse return null;
+    const colon = std.mem.findScalar(u8, raw, ':') orelse return null;
     const name = std.mem.trim(u8, raw[0..colon], " ");
     const value = std.mem.trim(u8, raw[colon + 1 ..], " ");
     if (name.len == 0 or value.len == 0) return null;
@@ -393,7 +397,7 @@ test "default user agent includes app name and version" {
 }
 
 test "tlsClientOptions uses no verification in insecure mode" {
-    if (builtin.os.tag == .freestanding) return error.SkipZigTest;
+    if (builtin.target.os.tag == .freestanding) return error.SkipZigTest;
 
     var http_client = http.Client{
         .allocator = std.testing.allocator,
@@ -424,7 +428,7 @@ test "tlsClientOptions uses no verification in insecure mode" {
 }
 
 test "tlsClientOptions verifies host and ca bundle in strict mode" {
-    if (builtin.os.tag == .freestanding) return error.SkipZigTest;
+    if (builtin.target.os.tag == .freestanding) return error.SkipZigTest;
 
     var http_client = http.Client{
         .allocator = std.testing.allocator,

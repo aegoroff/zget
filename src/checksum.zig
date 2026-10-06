@@ -131,7 +131,7 @@ pub const ValidateSpec = struct {
 
 /// Parses `--validate` values: bare hex digest, or `TYPE:DIGEST` (e.g. GitHub checksums).
 pub fn parseValidate(raw: []const u8) errors.ZgetError!ValidateSpec {
-    if (std.mem.indexOfScalar(u8, raw, ':')) |colon| {
+    if (std.mem.findScalar(u8, raw, ':')) |colon| {
         const algorithm = try parse(raw[0..colon]);
         const digest = try parseDigest(raw[colon + 1 ..]);
         return .{ .algorithm = algorithm, .digest = digest };
@@ -205,7 +205,8 @@ test "parseDigest accepts lowercase and uppercase hex" {
 
 test "parseDigest rejects invalid values" {
     try std.testing.expectError(error.InvalidValidateDigest, parseDigest("abc"));
-    try std.testing.expectError(error.InvalidValidateDigest, parseDigest("g" ** 64));
+    const invalid_hex: [digest_hex_len]u8 = @splat('g');
+    try std.testing.expectError(error.InvalidValidateDigest, parseDigest(&invalid_hex));
 }
 
 test "parseValidate accepts typed TYPE:DIGEST" {
@@ -297,7 +298,7 @@ test "Stream validates digest and warns on mismatch" {
     var warnings = std.Io.Writer.fixed(&warning_buffer);
     var hash_buf: [hash_buf_len]u8 = undefined;
 
-    const expected = [_]u8{0} ** 32;
+    const expected: [32]u8 = @splat(0);
     var stream = Stream.init(&dest, hash_buf[0..], .{
         .algorithm = .sha256,
         .expected = expected,
@@ -315,7 +316,7 @@ test "Stream validates digest quietly and fails without output on mismatch" {
     var summary = std.Io.Writer.fixed(&summary_buffer);
     var hash_buf: [hash_buf_len]u8 = undefined;
 
-    const expected = [_]u8{0} ** 32;
+    const expected: [32]u8 = @splat(0);
     var stream = Stream.init(&dest, hash_buf[0..], .{
         .algorithm = .sha256,
         .expected = expected,

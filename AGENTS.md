@@ -8,7 +8,7 @@ Instructions for AI coding agents working in the **zget** repository.
 
 | Item | Value |
 |------|-------|
-| Language | Zig **0.16.0** (see `mise.toml`) |
+| Language | Zig **0.17.0** (see `mise.toml`) |
 | CLI parsing | [yazap](https://github.com/prajwalch/yazap) 0.7.0 |
 | HTTP | `std.http.Client` via `src/transport.zig` |
 | License | MIT |
@@ -37,7 +37,7 @@ There is no `tests/` directory — tests live next to the code they cover (`test
 
 ## Build and run
 
-Use **mise** to pin the Zig/just versions, or install Zig 0.16.0 and just manually.
+Use **mise** to pin the Zig/just versions, or install Zig 0.17.0 and just manually.
 
 ```bash
 # Standard local build
@@ -53,13 +53,13 @@ zig build run -- -O out.zip https://example.com/file.zip
 zig build archive -Dversion=0.4.0
 
 # Cross-compile example
-zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseFast
+zig build -Dtarget=x86_64-linux-musl -Doptimize=fast
 ```
 
 Via **just** (uses mise for Zig; CI uses the same recipes):
 
 ```bash
-just build                                                      # ReleaseFast, x86_64-linux-musl, core2
+just build                                                      # optimize=fast, x86_64-linux-musl, core2
 just test
 just arch=x86_64 os=linux abi=musl ver=0.4.0 cpu=core2 release
 just ver=0.4.0 build-all                                        # all CI targets + archives
@@ -118,7 +118,7 @@ Key behaviors to preserve when changing code:
 - **Match existing style.** Follow patterns in existing `src/*.zig` modules for naming, error handling, and allocator use.
 - **Use std library first.** HTTP goes through `std.http.Client`; avoid adding dependencies without discussion.
 - **Errors.** Project-local errors live in `errors.zig` (`ZgetError` plus mapped std errors via `message()`). Propagate with `try`; use `catch` only where recovery is intentional (see the read-loop retry logic in `download.zig`). `main` catches failures and prints readable messages on stderr.
-- **I/O.** This codebase uses Zig 0.16 `std.Io` APIs (`init.io`, `std.Io.File`, `std.Io.Dir`, `std.Io.Clock`). Do not revert to pre-0.16 file APIs.
+- **I/O.** This codebase uses Zig 0.17 `std.Io` APIs (`init.io`, `std.Io.File`, `std.Io.Dir`, `std.Io.Clock`). Prefer `std.Io.Dir.path` over deprecated `std.fs.path`.
 - **Comments.** Only for non-obvious logic; the code should read clearly on its own.
 - **Tests.** Add `test` blocks in the same file as the code under test. Run `zig build test` before finishing.
 
@@ -176,7 +176,7 @@ feat: redirects support added
 fix: speed calculation fixes
 chore: readme corrected
 ci: migration to mise
-build: zig 0.16
+build: zig 0.17
 refactor: use arena from main init arg
 ```
 
@@ -188,7 +188,7 @@ refactor: use arena from main init arg
 
 - Never commit secrets, tokens, or credentials.
 - Custom headers (`-H`) may contain sensitive values — do not log or hardcode them in tests.
-- Validate user-controlled paths; prefer existing `std.fs.path` helpers over ad-hoc string concatenation.
+- Validate user-controlled paths; prefer existing `std.Io.Dir.path` helpers over ad-hoc string concatenation.
 
 ## What agents should avoid
 
@@ -205,7 +205,7 @@ Before considering a task done:
 1. `zig build` succeeds.
 2. `zig build test` passes.
 3. If CLI behavior changed, smoke-test: `zig build run -- <url>` or with `-O`/`-H` flags.
-4. No new compiler warnings in ReleaseFast (CI default).
+4. No new compiler warnings in `-Doptimize=fast` (CI default).
 
 ## Important Notes
 - Always verify build passes before completing tasks

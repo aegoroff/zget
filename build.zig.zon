@@ -1,8 +1,9 @@
 .{
     .name = .zget,
     .version = "0.1.0",
-    .paths = .{"."},
     .fingerprint = 0x27bc6886527c4a9a,
+    .minimum_zig_version = "0.17.0",
+    .paths = .{"."},
     .dependencies = .{
         .yazap = .{
             .url = "https://github.com/prajwalch/yazap/archive/refs/tags/0.7.0.tar.gz",

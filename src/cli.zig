@@ -39,8 +39,7 @@ pub fn parse(init: std.process.Init, gpa: std.mem.Allocator) !CliResult {
         \\Zget {s} ({s}), a non-interactive network retriever implemented in Zig
         \\Copyright (C) 2025-2026 Alexander Egorov. All rights reserved.
     ;
-    const app_descr = try std.fmt.allocPrint(
-        gpa,
+    const app_descr = try gpa.print(
         app_descr_template,
         .{ build_options.version, @tagName(query.cpu_arch.?) },
     );
@@ -249,7 +248,7 @@ fn normalizeOutputDashArgv(gpa: std.mem.Allocator, argv: []const [:0]const u8) !
     while (index < argv.len) : (index += 1) {
         const arg = argv[index];
         if (isOutputOption(arg) and index + 1 < argv.len and std.mem.eql(u8, argv[index + 1], "-")) {
-            const merged = try std.fmt.allocPrintSentinel(gpa, "{s}=-", .{arg}, 0);
+            const merged = try gpa.printSentinel("{s}=-", .{arg}, 0);
             try normalized.append(gpa, merged);
             index += 1;
             continue;

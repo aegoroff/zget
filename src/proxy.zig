@@ -95,7 +95,11 @@ fn createProxy(
 
     const uri = std.Uri.parse(url) catch try std.Uri.parseAfterScheme("http", url);
     const protocol = http.Client.Protocol.fromUri(uri) orelse return errors.ZgetError.UnsupportedProxyScheme;
-    const raw_host = try uri.getHostAlloc(gpa);
+    var host_buf: [std.Io.net.HostName.max_len]u8 = undefined;
+    const raw_host = std.Io.net.HostName.fromUri(uri, &host_buf) catch |err| switch (err) {
+        error.UriMissingHost => |e| return e,
+        error.NameTooLong, error.InvalidHostName => return error.InvalidHostName,
+    };
 
     const authorization = if (proxy_user) |user|
         try makeBasicAuthorization(gpa, user, proxy_password)
@@ -108,7 +112,7 @@ fn createProxy(
     const proxy = try gpa.create(http.Client.Proxy);
     proxy.* = .{
         .protocol = protocol,
-        .host = raw_host,
+        .host = .{ .bytes = try gpa.dupe(u8, raw_host.bytes) },
         .authorization = authorization,
         .port = uriPort(uri, protocol),
         .supports_connect = true,

@@ -45,15 +45,15 @@ fn isUsableFileName(name: []const u8) bool {
     if (std.mem.eql(u8, name, ".")) return false;
     if (std.mem.eql(u8, name, "..")) return false;
     // Defense in depth: reject any remaining path separators after basename.
-    if (std.mem.indexOfScalar(u8, name, '/') != null) return false;
-    if (std.mem.indexOfScalar(u8, name, '\\') != null) return false;
+    if (std.mem.findScalar(u8, name, '/') != null) return false;
+    if (std.mem.findScalar(u8, name, '\\') != null) return false;
     return true;
 }
 
 /// Last path component treating both `/` and `\` as separators.
 /// Remote-supplied names may use either, independent of the host OS.
 fn remoteFileNameBase(path: []const u8) []const u8 {
-    return std.fs.path.basenameWindows(path);
+    return std.Io.Dir.path.basenameWindows(path);
 }
 
 pub fn fileNameFromUri(gpa: std.mem.Allocator, uri: std.Uri) !?[]const u8 {
@@ -70,7 +70,7 @@ fn findContentDispositionParam(disposition: []const u8, param_name: []const u8) 
     var parts = std.mem.splitScalar(u8, disposition, ';');
     while (parts.next()) |part| {
         const trimmed = std.mem.trim(u8, part, " \t");
-        const eq = std.mem.indexOfScalar(u8, trimmed, '=') orelse continue;
+        const eq = std.mem.findScalar(u8, trimmed, '=') orelse continue;
         const name = std.mem.trim(u8, trimmed[0..eq], " \t");
         if (!std.ascii.eqlIgnoreCase(name, param_name)) continue;
         return std.mem.trim(u8, trimmed[eq + 1 ..], " \t");
@@ -95,7 +95,7 @@ fn parseQuotedFileName(value: []const u8) ?[]const u8 {
 }
 
 fn parseUnquotedFileName(value: []const u8) ?[]const u8 {
-    const end = std.mem.indexOfScalar(u8, value, ';') orelse value.len;
+    const end = std.mem.findScalar(u8, value, ';') orelse value.len;
     const trimmed = std.mem.trim(u8, value[0..end], " \t");
     if (trimmed.len == 0) return null;
     return trimmed;
@@ -108,7 +108,7 @@ fn parseContentDispositionValue(value: []const u8) ?[]const u8 {
 }
 
 fn parseFilenameStar(value: []const u8) ?[]const u8 {
-    const marker = std.mem.indexOf(u8, value, "''") orelse return null;
+    const marker = std.mem.find(u8, value, "''") orelse return null;
     const encoded = std.mem.trim(u8, value[marker + 2 ..], " \t");
     if (encoded.len == 0) return null;
     return encoded;
@@ -125,7 +125,7 @@ fn percentDecodeAlloc(gpa: std.mem.Allocator, encoded: []const u8) ![]const u8 {
 }
 
 fn decodeIfEncoded(gpa: std.mem.Allocator, name: []const u8) ![]const u8 {
-    if (std.mem.indexOfScalar(u8, name, '%') == null) return name;
+    if (std.mem.findScalar(u8, name, '%') == null) return name;
     return try percentDecodeAlloc(gpa, name);
 }
 
@@ -172,12 +172,12 @@ pub fn resolveFileName(
 
 fn hasTrailingSeparator(path: []const u8) bool {
     if (path.len == 0) return false;
-    return std.fs.path.isSep(path[path.len - 1]);
+    return std.Io.Dir.path.isSep(path[path.len - 1]);
 }
 
 fn trimTrailingSeparators(path: []const u8) []const u8 {
     var end = path.len;
-    while (end > 0 and std.fs.path.isSep(path[end - 1])) end -= 1;
+    while (end > 0 and std.Io.Dir.path.isSep(path[end - 1])) end -= 1;
     return path[0..end];
 }
 
@@ -186,7 +186,7 @@ fn isExistingDirectory(io: std.Io, path: []const u8) bool {
     if (trimmed.len == 0) return false;
 
     var optional_d: ?std.Io.Dir = null;
-    if (std.fs.path.isAbsolute(trimmed)) {
+    if (std.Io.Dir.path.isAbsolute(trimmed)) {
         optional_d = std.Io.Dir.openDirAbsolute(io, trimmed, .{}) catch null;
     } else {
         optional_d = std.Io.Dir.cwd().openDir(io, trimmed, .{}) catch null;
@@ -221,7 +221,7 @@ pub fn expandOutputPath(
 
     const home = environ.get("HOME") orelse return raw;
     if (raw.len == 1) return try gpa.dupe(u8, home);
-    return try std.fmt.allocPrint(gpa, "{s}{s}", .{ home, raw[1..] });
+    return try gpa.print("{s}{s}", .{ home, raw[1..] });
 }
 
 pub fn planOutput(
@@ -250,7 +250,7 @@ pub fn finalizePendingOutput(
 ) ![]const u8 {
     const file_name = try resolveFileName(gpa, uri, content_disposition);
     if (pending.directory) |directory| {
-        return try std.fs.path.join(gpa, &[_][]const u8{ directory, file_name });
+        return try std.Io.Dir.path.join(gpa, &[_][]const u8{ directory, file_name });
     }
     return file_name;
 }
@@ -271,8 +271,8 @@ pub fn outputTargetFromPlan(
 }
 
 pub fn createFile(io: std.Io, path: []const u8) !std.Io.File {
-    const file_options = std.Io.File.CreateFlags{ .read = false };
-    if (std.fs.path.isAbsolute(path)) {
+    const file_options: std.Io.Dir.CreateFileOptions = .{ .read = false };
+    if (std.Io.Dir.path.isAbsolute(path)) {
         return std.Io.Dir.createFileAbsolute(io, path, file_options);
     }
     return std.Io.Dir.cwd().createFile(io, path, file_options);
@@ -588,7 +588,7 @@ test "planOutput pending when output is existing directory" {
     defer tmp.cleanup();
 
     var dir_path_buffer: [128]u8 = undefined;
-    const dir_path = try std.fmt.bufPrint(&dir_path_buffer, ".zig-cache/tmp/{s}", .{&tmp.sub_path});
+    const dir_path = try std.mem.print(&dir_path_buffer, ".zig-cache/tmp/{s}", .{&tmp.sub_path});
 
     const plan = try planOutput(std.testing.io, dir_path);
     try std.testing.expect(plan == .pending);
@@ -604,7 +604,7 @@ test "finalizePendingOutput joins directory with content disposition filename" {
     const arena = arena_state.allocator();
 
     var dir_path_buffer: [128]u8 = undefined;
-    const dir_path = try std.fmt.bufPrint(&dir_path_buffer, ".zig-cache/tmp/{s}", .{&tmp.sub_path});
+    const dir_path = try std.mem.print(&dir_path_buffer, ".zig-cache/tmp/{s}", .{&tmp.sub_path});
 
     const uri = try std.Uri.parse("https://example.com/");
     const disposition = "attachment; filename=\"pkg.zip\"";
@@ -622,7 +622,7 @@ test "outputTargetFromPlan resolves pending directory output" {
     const arena = arena_state.allocator();
 
     var dir_path_buffer: [128]u8 = undefined;
-    const dir_path = try std.fmt.bufPrint(&dir_path_buffer, ".zig-cache/tmp/{s}", .{&tmp.sub_path});
+    const dir_path = try std.mem.print(&dir_path_buffer, ".zig-cache/tmp/{s}", .{&tmp.sub_path});
 
     const uri = try std.Uri.parse("https://example.com/");
     const plan = try planOutput(std.testing.io, dir_path);
